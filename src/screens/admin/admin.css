@@ -1,0 +1,985 @@
+/* ==========================================================================
+   Admin — the management app shell (sidebar + content) and every section
+   inside it. Built entirely from the design-system tokens and primitives in
+   src/styles/global.css so the panel reads as the same product as the lock
+   screen: near-black blue-violet depth, one cyan-into-violet accent, mono
+   tabular numerals for all money and time.
+   ========================================================================== */
+
+.adm-root {
+  position: relative;
+  display: grid;
+  grid-template-columns: 244px minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+  background: radial-gradient(1200px 800px at 100% -10%, #161f42 0%, #080b1a 55%, #04050d 100%);
+}
+
+/* Hairline grid, same texture as the lock screen backdrop. */
+.adm-fx {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: linear-gradient(to right, var(--fx-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--fx-grid) 1px, transparent 1px);
+  background-size: var(--fx-grid-size) var(--fx-grid-size);
+  -webkit-mask-image: radial-gradient(120% 90% at 80% 0%, #000 0%, transparent 85%);
+  mask-image: radial-gradient(120% 90% at 80% 0%, #000 0%, transparent 85%);
+}
+
+.adm-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+/* ------------------------------------------------------------------ sidebar */
+.adm-side {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: var(--sp-5) var(--sp-4);
+  border-right: 1px solid var(--border-soft);
+  background: linear-gradient(180deg, rgba(13, 18, 38, 0.86), rgba(5, 7, 15, 0.9));
+  overflow-y: auto;
+}
+
+.adm-side-brand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-2);
+}
+.adm-side-tag {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-mega);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.adm-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.adm-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  text-align: left;
+  transition: color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+.adm-nav-item:hover:not(.is-active) {
+  background-color: rgba(126, 160, 255, 0.07);
+  color: var(--text);
+}
+.adm-nav-item.is-active {
+  border-color: rgba(63, 233, 255, 0.28);
+  background: linear-gradient(100deg, var(--accent-wash), var(--violet-wash));
+  color: var(--text);
+}
+/* Accent rail marking the active section. */
+.adm-nav-item.is-active::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  left: -1px;
+  width: 3px;
+  border-radius: var(--r-pill);
+  background: var(--grad-accent);
+  box-shadow: var(--glow-accent);
+}
+.adm-nav-item.is-active .adm-icon {
+  color: var(--accent);
+}
+
+.adm-side-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border-soft);
+}
+.adm-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.btn.adm-sync-btn {
+  padding: 6px 10px;
+}
+
+.adm-sync-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+.adm-sync-facts dt {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.adm-sync-facts dd {
+  margin: 2px 0 0;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+.adm-sync-error {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  color: #ffc3ce;
+  /* Reconciler errors can be long; keep the sidebar from stretching. */
+  max-height: 48px;
+  overflow: hidden;
+}
+
+.adm-update {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--border-soft);
+}
+.adm-update-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.adm-update-ver {
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  color: var(--text-muted);
+}
+.adm-update-status {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  color: var(--text-faint);
+  max-height: 40px;
+  overflow: hidden;
+}
+.adm-update-status.is-bad {
+  color: #ffc3ce;
+}
+
+.adm-side-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.btn.adm-side-btn {
+  justify-content: flex-start;
+}
+
+/* ------------------------------------------------------------------ content */
+.adm-main {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.adm-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-6) var(--sp-6) var(--sp-4);
+  border-bottom: 1px solid var(--border-soft);
+}
+.adm-head-text {
+  min-width: 0;
+}
+.adm-head-eyebrow {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.adm-head-title {
+  margin: 0;
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.adm-head-sub {
+  margin: 4px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+.adm-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: var(--sp-5) var(--sp-6) var(--sp-7);
+  overflow-y: auto;
+}
+
+/* ------------------------------------------------------------- layout blocks */
+.adm-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.adm-two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.adm-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+.adm-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+/* Bottom-aligns a button that sits in a grid of labelled fields. */
+.adm-field-end {
+  justify-content: flex-end;
+}
+
+.adm-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+}
+.adm-row .input {
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------- panels */
+.card.adm-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+}
+.adm-panel-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+.adm-panel-titles {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.adm-panel-title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+.adm-panel-meta {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+}
+.adm-panel-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.adm-empty,
+.adm-loading {
+  margin: var(--sp-2) 0;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+/* Inline feedback, mirroring the tray HUD message line. */
+.adm-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.adm-note.is-ok {
+  color: var(--ok);
+}
+.adm-note.is-err {
+  color: #ffc3ce;
+}
+
+.adm-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+.adm-hint.is-bad {
+  color: var(--warn);
+}
+
+.btn.adm-icon-btn {
+  padding: 6px;
+}
+
+/* -------------------------------------------------------------------- chips */
+.adm-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-pill);
+  background: rgba(4, 5, 13, 0.5);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+.adm-chip.is-role-admin {
+  border-color: rgba(139, 108, 255, 0.42);
+  background: var(--violet-wash);
+  color: #c9bcff;
+}
+.adm-chip.is-mode-open {
+  border-color: rgba(255, 190, 85, 0.36);
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+.adm-chip.is-mode-timed {
+  border-color: rgba(63, 233, 255, 0.32);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.adm-chip.is-pc-in_session {
+  border-color: rgba(53, 227, 160, 0.32);
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+.adm-chip.is-pc-offline {
+  border-color: rgba(255, 79, 109, 0.32);
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+
+/* One tint per ledger kind: money in is cyan, money out is red, time is violet. */
+.adm-chip.is-kind-topup {
+  border-color: rgba(53, 227, 160, 0.34);
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+.adm-chip.is-kind-buy_time {
+  border-color: rgba(63, 233, 255, 0.34);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.adm-chip.is-kind-sell_time {
+  border-color: rgba(53, 227, 160, 0.34);
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+.adm-chip.is-kind-open_time {
+  border-color: rgba(255, 190, 85, 0.34);
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+.adm-chip.is-kind-session {
+  border-color: rgba(139, 108, 255, 0.4);
+  background: var(--violet-wash);
+  color: #c9bcff;
+}
+.adm-chip.is-kind-grant {
+  border-color: rgba(255, 95, 210, 0.32);
+  background: rgba(255, 95, 210, 0.12);
+  color: #ff9ee2;
+}
+.adm-chip.is-kind-adjust {
+  border-color: rgba(255, 79, 109, 0.32);
+  background: var(--danger-wash);
+  color: #ffa3b3;
+}
+
+/* ---------------------------------------------------------------- stat cards */
+.adm-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(196px, 1fr));
+  gap: var(--sp-3);
+}
+.adm-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--sp-4);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  background: var(--grad-sheen), var(--bg-elev);
+  box-shadow: var(--shadow-1);
+}
+.adm-stat-label {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.adm-stat-value {
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  line-height: 1.1;
+}
+.adm-stat-hint {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+.adm-stat.is-accent {
+  border-color: rgba(63, 233, 255, 0.3);
+  background: linear-gradient(160deg, rgba(63, 233, 255, 0.12), rgba(139, 108, 255, 0.08));
+}
+.adm-stat.is-accent .adm-stat-value {
+  color: #bdf3ff;
+  text-shadow: 0 0 24px rgba(63, 233, 255, 0.3);
+}
+.adm-stat.is-accent .adm-stat-label {
+  color: var(--accent);
+}
+.adm-stat.is-ok .adm-stat-value {
+  color: var(--ok);
+}
+.adm-stat.is-warn .adm-stat-value {
+  color: var(--warn);
+}
+
+/* --------------------------------------------------------------------- chart */
+.adm-chart {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--sp-2);
+  align-items: end;
+  height: 168px;
+}
+.adm-chart-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  height: 100%;
+}
+.adm-chart-value {
+  font-size: var(--fs-2xs);
+  color: var(--text-faint);
+}
+.adm-chart-track {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  border-radius: var(--r-xs);
+  background: rgba(4, 5, 13, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(126, 160, 255, 0.1);
+  overflow: hidden;
+}
+.adm-chart-bar {
+  width: 100%;
+  min-height: 2px;
+  border-radius: var(--r-xs);
+  background: var(--grad-accent);
+  box-shadow: 0 0 16px -4px rgba(63, 233, 255, 0.7);
+  transition: height var(--t-slow) var(--ease);
+}
+.adm-chart-bar.is-empty {
+  background: rgba(126, 160, 255, 0.14);
+  box-shadow: none;
+}
+.adm-chart-day {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.adm-chart-foot {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+
+/* ------------------------------------------------------------ activity feed */
+.adm-feed {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+.adm-feed-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.adm-feed-row:last-child {
+  border-bottom: 0;
+}
+.adm-feed-text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-feed-when {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+
+/* ----------------------------------------------------------- station strip */
+.adm-pcs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--sp-3);
+}
+.adm-pc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: rgba(21, 28, 54, 0.5);
+}
+.adm-pc.is-in_session {
+  border-color: rgba(53, 227, 160, 0.3);
+  background: linear-gradient(160deg, rgba(53, 227, 160, 0.1), rgba(21, 28, 54, 0.5));
+}
+.adm-pc.is-offline {
+  border-color: rgba(255, 79, 109, 0.24);
+}
+.adm-pc-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.adm-pc-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-pc-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+
+/* -------------------------------------------------------------------- tables */
+.adm-table-wrap {
+  /* Wide tables scroll sideways instead of squashing the money columns. */
+  overflow-x: auto;
+  margin: 0 calc(-1 * var(--sp-1));
+  padding: 0 var(--sp-1);
+}
+.adm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.adm-table th {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.adm-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.adm-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.adm-table tbody tr:hover td {
+  background-color: rgba(126, 160, 255, 0.05);
+}
+.adm-num-col {
+  text-align: right;
+}
+.adm-table td.is-pos {
+  color: var(--ok);
+}
+.adm-table td.is-neg {
+  color: var(--danger);
+}
+
+/* Sort control living inside a header cell. */
+.adm-th {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+.adm-th:hover {
+  color: var(--text);
+}
+
+.adm-row-click {
+  cursor: pointer;
+}
+.adm-row-click.is-selected td {
+  background-color: rgba(63, 233, 255, 0.09);
+}
+.adm-row-click.is-selected td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.adm-table tr.is-live td {
+  background-color: rgba(53, 227, 160, 0.05);
+}
+.adm-live {
+  color: var(--ok);
+  font-weight: 700;
+}
+.adm-table td.is-debit {
+  color: #ffb3c0;
+}
+.adm-table td.is-credit {
+  color: #a8f3d5;
+}
+.adm-note-col {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.adm-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+}
+.adm-pager-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+
+/* ------------------------------------------------------------ search + filters */
+.adm-search {
+  position: relative;
+  min-width: 210px;
+}
+.adm-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  transform: translateY(-50%);
+  width: 15px;
+  height: 15px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+.input.adm-search-input {
+  padding-left: 32px;
+}
+.adm-search-input::-webkit-search-cancel-button {
+  filter: invert(0.7);
+}
+
+.adm-inline-field {
+  gap: 4px;
+}
+.adm-inline-field .input {
+  min-width: 132px;
+}
+
+/* -------------------------------------------------------------------- drawer */
+.adm-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(2, 3, 8, 0.6);
+  backdrop-filter: blur(2px);
+}
+.adm-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 21;
+  width: min(432px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  border-left: 1px solid rgba(63, 233, 255, 0.22);
+  background: linear-gradient(180deg, rgba(23, 31, 62, 0.97), rgba(7, 10, 23, 0.98));
+  box-shadow: -28px 0 70px -30px rgba(0, 0, 0, 0.95);
+  overflow: hidden;
+}
+
+.adm-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.adm-drawer-id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.adm-drawer-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-drawer-user {
+  font-size: var(--fs-sm);
+  color: var(--text-faint);
+}
+.adm-drawer-head-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
+}
+
+.adm-drawer-balances {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+.adm-drawer-balances-single {
+  grid-template-columns: 1fr;
+}
+.adm-drawer-balance {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 13px;
+  border: 1px solid rgba(63, 233, 255, 0.24);
+  border-radius: var(--r-md);
+  background: linear-gradient(160deg, rgba(63, 233, 255, 0.1), rgba(139, 108, 255, 0.08));
+}
+.adm-drawer-balance-label {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.adm-drawer-balance-value {
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  line-height: 1.1;
+}
+.adm-drawer-balance-hint {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.adm-tabs {
+  display: flex;
+  gap: var(--sp-1);
+  padding: 3px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: rgba(4, 5, 13, 0.5);
+}
+.adm-tab {
+  flex: 1;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+.adm-tab:hover:not(.is-active) {
+  color: var(--text);
+}
+.adm-tab.is-active {
+  background: var(--bg-elev-2);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+
+.adm-drawer-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  overflow-y: auto;
+  /* Room for the scrollbar so action cards don't touch it. */
+  padding-right: var(--sp-1);
+}
+
+.adm-action {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  background: rgba(9, 12, 26, 0.6);
+}
+.adm-action-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.adm-action-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+.adm-action-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+.adm-action-danger {
+  border-color: rgba(255, 92, 108, 0.35);
+  background: rgba(255, 92, 108, 0.06);
+}
+.adm-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+}
+
+.adm-mini-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+.adm-mini-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.adm-mini-row:last-child {
+  border-bottom: 0;
+}
+.adm-mini-main {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-mini-when {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+
+/* ------------------------------------------------------------------ settings */
+.adm-settings {
+  max-width: 780px;
+}
+.adm-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: var(--sp-4);
+  align-items: start;
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.adm-setting:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.adm-setting-copy {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.adm-save-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/* ---------------------------------------------------------------- responsive */
+@media (max-width: 1000px) {
+  .adm-root {
+    grid-template-columns: 196px minmax(0, 1fr);
+  }
+  .adm-two-col {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .adm-setting {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-2);
+  }
+  .adm-grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .adm-head,
+  .adm-body {
+    padding-left: var(--sp-5);
+    padding-right: var(--sp-5);
+  }
+}
+
+@media (max-width: 860px) {
+  .adm-grid-3,
+  .adm-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

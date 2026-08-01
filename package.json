@@ -1,0 +1,102 @@
+{
+  "name": "pixl-app",
+  "version": "0.1.0",
+  "description": "Pixl Pisonet kiosk client (lockscreen + session tray + admin panel)",
+  "main": "out/main/main.js",
+  "author": "Pixl",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "build": "npm run typecheck && electron-vite build",
+    "rebuild": "node scripts/rebuild-sqlite.js",
+    "package:win": "npm run build && electron-builder --win",
+    "watchdog:install": "node scripts/watchdog-install.js",
+    "watchdog:uninstall": "node scripts/watchdog-uninstall.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.111.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "12.11.1",
+    "dotenv": "^17.4.2",
+    "electron-updater": "^6.8.9",
+    "node-windows": "^1.0.0-beta.8"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^42.8.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "node-global-key-listener": "^0.3.0",
+    "prebuild-install": "^7.1.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "^5.7.3",
+    "vite": "^7.3.6"
+  },
+  "build": {
+    "appId": "com.pixl.pisonet",
+    "productName": "Pixl",
+    "icon": "build/icon.png",
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".env.example",
+        "to": ".env.example"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "watchdog",
+        "to": "watchdog"
+      }
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**",
+      "**/node_modules/node-global-key-listener/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Chibiby",
+      "repo": "pixl-app"
+    }
+  }
+}

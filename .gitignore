@@ -1,0 +1,13 @@
+node_modules/
+out/
+dist/
+release/
+*.log
+.env
+.env.local
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+.DS_Store
+Thumbs.db

@@ -1,0 +1,79 @@
+/* PIXL wordmark: gradient letters, pixel-cluster mark, blinking caret. */
+
+.pxl-wm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wm-gap);
+  --wm-mark: 44px;
+  --wm-word: var(--fs-3xl);
+  --wm-gap: var(--sp-3);
+}
+
+.pxl-wm-sm {
+  --wm-mark: 22px;
+  --wm-word: var(--fs-lg);
+  --wm-gap: var(--sp-2);
+}
+.pxl-wm-md {
+  --wm-mark: 34px;
+  --wm-word: var(--fs-2xl);
+  --wm-gap: var(--sp-3);
+}
+.pxl-wm-lg {
+  --wm-mark: 58px;
+  --wm-word: var(--fs-5xl);
+  --wm-gap: var(--sp-4);
+}
+
+.pxl-mark {
+  width: var(--wm-mark);
+  height: var(--wm-mark);
+  flex: none;
+  filter: drop-shadow(0 0 14px rgba(63, 233, 255, 0.35));
+}
+
+.pxl-wm-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pxl-wm-word {
+  display: flex;
+  align-items: baseline;
+  gap: 0.14em;
+  font-family: var(--font-display);
+  font-size: var(--wm-word);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  filter: drop-shadow(0 0 22px rgba(103, 128, 255, 0.4));
+}
+
+.pxl-wm-letters {
+  background: var(--grad-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Terminal-style block that sits after the word and blinks slowly. */
+.pxl-wm-caret {
+  width: 0.2em;
+  height: 0.66em;
+  border-radius: 1px;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(63, 233, 255, 0.8);
+  animation: pxl-blink 1.9s steps(1, end) infinite;
+}
+
+.pxl-wm-tag {
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  letter-spacing: var(--track-mega);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.pxl-wm-lg .pxl-wm-tag {
+  font-size: var(--fs-sm);
+}

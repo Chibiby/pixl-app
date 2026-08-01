@@ -1,0 +1,446 @@
+/* ==========================================================================
+   TrayPopover — compact session HUD shown from the system tray.
+   Sized to the popover window created in electron/windows.ts (352 x 520).
+   ========================================================================== */
+
+.hud-root {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--sp-4);
+  overflow: hidden;
+  background: radial-gradient(120% 80% at 12% -10%, #1a2348 0%, #0a0e1f 55%, #05070f 100%);
+}
+
+/* Hairline grid + top accent hairline, matching the lock screen texture. */
+.hud-fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--grad-accent),
+    linear-gradient(to right, var(--fx-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--fx-grid) 1px, transparent 1px);
+  background-size: 100% 2px, 28px 28px, 28px 28px;
+  background-repeat: no-repeat, repeat, repeat;
+}
+
+/* ------------------------------------------------------------------- header */
+.hud-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.hud-id {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.hud-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: var(--grad-accent);
+  box-shadow: var(--glow-accent);
+}
+.hud-avatar-initial {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  font-weight: 800;
+  color: var(--text-on-accent);
+}
+.hud-id-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.hud-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hud-user {
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+}
+.hud-link-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.hud-link.is-online {
+  border-color: rgba(53, 227, 160, 0.28);
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+.hud-link.is-online .hud-link-dot {
+  box-shadow: 0 0 8px rgba(53, 227, 160, 0.9);
+  animation: pxl-breathe 2.6s ease-in-out infinite;
+}
+.hud-link.is-offline {
+  border-color: rgba(255, 79, 109, 0.28);
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+
+/* --------------------------------------------------------------------- body */
+.hud-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+/* ------------------------------------------------------------ hero readout */
+.hud-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 13px 14px 12px;
+  border: 1px solid rgba(63, 233, 255, 0.32);
+  border-radius: var(--r-md);
+  background: linear-gradient(160deg, rgba(63, 233, 255, 0.12), rgba(139, 108, 255, 0.1));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: border-color var(--t-med) var(--ease), background var(--t-med) var(--ease);
+}
+.hud-hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.hud-hero-label {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-mega);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.hud-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-pill);
+  background: rgba(4, 5, 13, 0.45);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.hud-hero-value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--fs-3xl);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  text-shadow: 0 0 26px rgba(63, 233, 255, 0.35);
+  animation: pxl-breathe 4.2s ease-in-out infinite;
+}
+.hud-hero-part {
+  display: inline-flex;
+  align-items: baseline;
+}
+.hud-hero-unit {
+  margin-left: 2px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-faint);
+}
+
+.hud-bar {
+  position: relative;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: rgba(4, 5, 13, 0.6);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(126, 160, 255, 0.14);
+}
+.hud-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--grad-accent);
+  box-shadow: 0 0 12px rgba(63, 233, 255, 0.6);
+  transition: width var(--t-slow) var(--ease), background var(--t-med) var(--ease);
+}
+
+.hud-hero-foot {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+/* Low runway: shift the whole readout warm-red and let it breathe faster. */
+.hud-hero.is-low {
+  border-color: rgba(255, 79, 109, 0.5);
+  background: linear-gradient(160deg, rgba(255, 79, 109, 0.16), rgba(255, 95, 210, 0.08));
+}
+.hud-hero.is-low .hud-hero-label {
+  color: var(--danger);
+}
+.hud-hero.is-low .hud-hero-value {
+  color: #ffd3db;
+  text-shadow: 0 0 26px rgba(255, 79, 109, 0.5);
+  animation-duration: 1.8s;
+}
+.hud-hero.is-low .hud-bar-fill {
+  background: var(--grad-danger);
+  box-shadow: 0 0 12px rgba(255, 79, 109, 0.65);
+}
+.hud-hero.is-low .hud-hero-foot {
+  color: #ffc3ce;
+}
+
+/* ----------------------------------------------------------- mode switch */
+.hud-mode-switch {
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-inline-size: 0;
+}
+.hud-mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: rgba(4, 5, 13, 0.55);
+}
+.hud-mode-btn {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: calc(var(--r-sm) - 1px);
+  padding: 7px 8px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--t-med) var(--ease), color var(--t-med) var(--ease),
+    border-color var(--t-med) var(--ease);
+}
+.hud-mode-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(126, 160, 255, 0.08);
+}
+.hud-mode-btn.is-active {
+  border-color: rgba(63, 233, 255, 0.35);
+  background: linear-gradient(160deg, rgba(63, 233, 255, 0.16), rgba(139, 108, 255, 0.12));
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.hud-mode-btn:disabled:not(.is-active) {
+  opacity: 0.55;
+  cursor: default;
+}
+.hud-mode-hint {
+  margin: 6px 2px 0;
+  font-size: var(--fs-2xs);
+  line-height: 1.35;
+  color: var(--text-faint);
+}
+
+/* -------------------------------------------------------------------- stats */
+.hud-stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+.hud-stat {
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: rgba(21, 28, 54, 0.55);
+}
+.hud-stat dt {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.hud-stat dd {
+  margin: 2px 0 0;
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+/* -------------------------------------------------------- time to use */
+.hud-buy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 11px 12px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  background: rgba(9, 12, 26, 0.6);
+}
+.hud-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.hud-section-title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.hud-section-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+.hud-buy-copy {
+  margin: -2px 0 0;
+  font-size: var(--fs-2xs);
+  line-height: 1.35;
+  color: var(--text-faint);
+}
+
+.hud-buy-balance {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 7px 9px;
+  border: 1px solid rgba(126, 160, 255, 0.16);
+  border-radius: var(--r-sm);
+  background: rgba(4, 5, 13, 0.45);
+}
+.hud-buy-balance-label {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.hud-buy-balance-value {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.hud-buy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+}
+
+.hud-buy-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hud-buy-custom-label {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.hud-buy-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+}
+.hud-buy-row .amount-peso {
+  left: 10px;
+  font-size: var(--fs-sm);
+}
+.hud-buy-row .amount-input {
+  padding-left: 26px;
+}
+.hud-buy-go {
+  flex: none;
+  min-width: 88px;
+}
+
+.hud-msg {
+  margin: 0;
+  min-height: 15px;
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  color: var(--text-faint);
+}
+.hud-msg.is-ok {
+  color: var(--ok);
+}
+.hud-msg.is-err {
+  color: #ffc3ce;
+}
+.hud-msg.is-hint {
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------------------------- footer */
+.btn.hud-logout {
+  position: relative;
+  flex: none;
+  padding: 11px;
+  font-size: var(--fs-md);
+}
+
+.hud-brand {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  opacity: 0.5;
+}
+.pxl-mark.hud-brand-mark {
+  width: 12px;
+  height: 12px;
+  filter: none;
+}
+.hud-brand-word {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: var(--track-mega);
+  color: var(--text-faint);
+}
