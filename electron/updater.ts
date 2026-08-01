@@ -212,5 +212,7 @@ export function installUpdateNow(): UpdateStatus {
 
 /** After returning to a safe lockscreen, install a pending download. */
 export function maybeInstallPendingUpdate(): void {
-  if (status.phase === 'downloaded') tryAutoInstall()
+  if (status.phase !== 'downloaded') return
+  installWhenReady = true
+  tryAutoInstall()
 }
