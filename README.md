@@ -93,6 +93,11 @@ update, then freeze again when stable.
 If Supabase is not configured, the app runs **fully offline** against the local
 SQLite cache (unlimited offline grace, per the plan).
 
+**Packaged installs:** copy `.env` to `%ProgramData%\Pixl\.env` (survives NSIS
+updates). The app also checks `resources\.env` and migrates it to ProgramData
+on first launch. Do not rely on a `.env` only inside `Program Files\Pixl` —
+updates replace that folder.
+
 ## Balance model
 
 An account carries **two integer balances**:

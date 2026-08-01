@@ -1,4 +1,4 @@
-import { app, ipcMain, Tray, nativeImage, Menu, nativeTheme } from 'electron'
+import { app, ipcMain, Tray, nativeImage, Menu, nativeTheme, screen } from 'electron'
 import { IPC } from '@shared/ipc'
 import { appIcon } from './assets'
 import type {
@@ -41,7 +41,7 @@ import {
   stopReconciler
 } from './sync/reconciler'
 import { initKeyboardHook, disposeKeyboardHook } from './keyboardHook'
-import { registerStartup } from './startup'
+import { isPixlWinlogonShell, registerStartup } from './startup'
 import { ensureWatchdogProtection } from './watchdog'
 import {
   checkForUpdates,
@@ -49,14 +49,31 @@ import {
   initUpdater,
   installUpdateNow
 } from './updater'
+import { bootLog } from './bootLog'
+
+// Packaged kiosk as Winlogon Shell: GPU compositing often yields a pure black
+// HWND when Explorer/DWM never started. Admin→Quit appears to "fix" it only
+// because it spawns explorer.exe. Disable HA before ready.
+if (process.platform === 'win32') {
+  try {
+    app.disableHardwareAcceleration()
+    app.commandLine.appendSwitch('disable-gpu')
+    app.commandLine.appendSwitch('disable-gpu-compositing')
+    bootLog('hardware acceleration disabled (win32 kiosk)')
+  } catch (err) {
+    bootLog(`disableHardwareAcceleration failed: ${String(err)}`)
+  }
+}
 
 // Kiosk resilience: never let an unhandled error tear the process down. The
 // watchdog would relaunch it, but staying up is better than a relaunch flicker.
 process.on('unhandledRejection', (reason) => {
   console.error('[pixl] unhandledRejection:', reason)
+  bootLog(`unhandledRejection: ${String(reason)}`)
 })
 process.on('uncaughtException', (err) => {
   console.error('[pixl] uncaughtException:', err)
+  bootLog(`uncaughtException: ${err?.stack || String(err)}`)
 })
 
 // Single-instance lock: a second launch (e.g. from the watchdog after the first
@@ -72,7 +89,12 @@ if (!gotLock) {
 let controller: AppController
 let tray: Tray | null = null
 
-function createTray(): void {
+/** Lazy tray: created on first client session so lockscreen boot stays lean. */
+function ensureTray(): void {
+  if (tray && !tray.isDestroyed()) {
+    controller.setTray(tray)
+    return
+  }
   const branded = appIcon()
   const image = branded.isEmpty()
     ? nativeImage.createFromDataURL(
@@ -214,29 +236,53 @@ if (gotLock) {
   app.on('second-instance', () => {
     // Bring lockscreen back to front if a duplicate tried to launch.
     controller?.broadcastState()
+    controller?.focusLockWindows()
   })
 
   app.whenReady().then(() => {
     // Dev safety: never shut the machine down while developing.
     if (!app.isPackaged) process.env.PIXL_NO_SHUTDOWN = '1'
 
+    const displays = screen.getAllDisplays().map((d) => ({
+      id: d.id,
+      bounds: d.bounds,
+      primary: d.id === screen.getPrimaryDisplay().id
+    }))
+    bootLog(
+      `whenReady packaged=${app.isPackaged} version=${app.getVersion()} ` +
+        `execPath=${process.execPath} cwd=${process.cwd()} ` +
+        `shell=${isPixlWinlogonShell()} displays=${JSON.stringify(displays)}`
+    )
+
     // Kiosk UI: no application menu (removes the File/Edit/View/Window bar on the
     // admin window) and dark native title bars to match the app theme.
     Menu.setApplicationMenu(null)
     nativeTheme.themeSource = 'dark'
 
+    try {
+      app.focus({ steal: true })
+    } catch {
+      try {
+        app.focus()
+      } catch {
+        /* ignore */
+      }
+    }
+
     initDb()
     const cfg = getRuntimeConfig()
     console.log(`[pixl] starting on PC "${cfg.pcName}" (supabase=${cfg.hasSupabase})`)
+    bootLog(`config pcName=${cfg.pcName} supabase=${cfg.hasSupabase}`)
 
     controller = new AppController()
+    controller.setEnsureTray(ensureTray)
     initUpdater({
       isSafeToAutoInstall: () => controller.isSafeToAutoInstallUpdate(),
       prepareForInstall: () => controller.prepareForUpdateInstall()
     })
     registerIpc()
     initKeyboardHook()
-    createTray()
+    // Tray is deferred until a client session starts (ensureTray).
     controller.init()
 
     registerStartup()

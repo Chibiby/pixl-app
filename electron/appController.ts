@@ -44,10 +44,16 @@ import { SessionTimer } from './session/timer'
 import { shutdownWindows } from './shutdown'
 import { setKeyboardHookActive } from './keyboardHook'
 import {
+  forceShellForeground,
+  isPixlWinlogonShell,
+  suppressDesktopShellDeferred
+} from './startup'
+import {
   createAdminWindow,
   createLockWindow,
   createTrayPopover
 } from './windows'
+import { bootLog } from './bootLog'
 import { randomUUID } from 'crypto'
 import { spawn } from 'child_process'
 
@@ -114,14 +120,19 @@ export class AppController {
   private idleDeadline = 0
   private allowQuit = false
   private trayRef: import('electron').Tray | null = null
+  /** Lazy tray factory from main — session HUD needs the tray icon. */
+  private ensureTrayFn: (() => void) | null = null
   /** Last tray icon bounds from a click / menu show (for auto-positioning). */
   private lastTrayBounds: Electron.Rectangle | null = null
+  /** Periodic shell-mode visibility reassert (cleared when leaving lockscreen). */
+  private shellAssertTimer: ReturnType<typeof setInterval> | null = null
 
   init(): void {
     const cfg = getRuntimeConfig()
     this.pc = getOrCreatePc(getMachineIdCached(), cfg.pcName)
     screen.on('display-added', () => this.handleDisplayChange())
     screen.on('display-removed', () => this.handleDisplayChange())
+    bootLog(`AppController.init pc=${this.pc.name} id=${this.pc.id}`)
     this.enterLockscreen(null)
   }
 
@@ -152,6 +163,11 @@ export class AppController {
 
   setTray(tray: import('electron').Tray): void {
     this.trayRef = tray
+  }
+
+  /** Wire main's lazy tray creator; called before session HUD needs the icon. */
+  setEnsureTray(fn: () => void): void {
+    this.ensureTrayFn = fn
   }
 
   setOnline(online: boolean): void {
@@ -189,7 +205,12 @@ export class AppController {
     this.teardownSession()
     this.closeAdminWindow()
     this.hideTrayPopover()
+    // Create + show lock windows FIRST. Killing Explorer before the first paint
+    // (previous v0.1.3 order) races DWM and yields a black screen that only
+    // "recovers" when Admin Quit spawns explorer.exe again.
     this.createLockWindows()
+    suppressDesktopShellDeferred(2500)
+    this.startShellVisibilityAssert()
     setKeyboardHookActive(true)
     setPcStatus(this.pc.id, 'locked', null)
     this.startIdleTimer()
@@ -197,6 +218,65 @@ export class AppController {
     checkForUpdatesWhenIdle()
     maybeInstallPendingUpdate()
     this.broadcastState()
+  }
+
+  /** Re-show / focus lock windows (e.g. second-instance while locked). */
+  focusLockWindows(): void {
+    if (this.mode !== 'lockscreen') return
+    if (this.lockWindows.length === 0) {
+      this.createLockWindows()
+      return
+    }
+    for (const win of this.lockWindows) {
+      if (win.isDestroyed()) continue
+      win.setAlwaysOnTop(true, 'screen-saver')
+      win.show()
+      forceShellForeground(win)
+    }
+  }
+
+  private startShellVisibilityAssert(): void {
+    this.clearShellVisibilityAssert()
+    if (!isPixlWinlogonShell()) return
+    bootLog('starting shell visibility assert loop')
+    this.shellAssertTimer = setInterval(() => {
+      if (this.mode !== 'lockscreen') {
+        this.clearShellVisibilityAssert()
+        return
+      }
+      if (this.lockWindows.length === 0) {
+        bootLog('shell assert: no lock windows — recreating')
+        this.createLockWindows()
+        return
+      }
+      for (const win of this.lockWindows) {
+        if (win.isDestroyed()) continue
+        try {
+          if (!win.isVisible()) win.show()
+          if (isPixlWinlogonShell()) {
+            try {
+              win.setKiosk(true)
+              win.setFullScreen(true)
+            } catch {
+              /* ignore */
+            }
+          }
+          win.setAlwaysOnTop(true, 'screen-saver')
+          win.moveTop()
+        } catch {
+          /* ignore */
+        }
+      }
+      const primary = this.lockWindows.find((w) => !w.isDestroyed())
+      if (primary) forceShellForeground(primary)
+    }, 8000)
+  }
+
+  private clearShellVisibilityAssert(): void {
+    if (this.shellAssertTimer) {
+      clearInterval(this.shellAssertTimer)
+      this.shellAssertTimer = null
+    }
   }
 
   startClientSession(
@@ -218,6 +298,7 @@ export class AppController {
     this.pendingAccount = null
     this.clearChooserTimer()
     this.clearIdleTimer()
+    this.clearShellVisibilityAssert()
     setKeyboardHookActive(false)
     this.destroyLockWindows()
 
@@ -242,6 +323,7 @@ export class AppController {
       ended: false
     }
     timer.start()
+    this.ensureTrayFn?.()
     this.ensureTrayPopover()
     this.autoShowTrayPopover()
     this.broadcastState()
@@ -262,6 +344,7 @@ export class AppController {
     this.pendingAccount = null
     this.clearChooserTimer()
     this.clearIdleTimer()
+    this.clearShellVisibilityAssert()
     setKeyboardHookActive(false)
     this.destroyLockWindows()
 
@@ -287,6 +370,7 @@ export class AppController {
     }
     updateSessionUsage(park.sessionId, park.priorSecondsUsed, park.spentCentavos)
     timer.start()
+    this.ensureTrayFn?.()
     this.ensureTrayPopover()
     this.autoShowTrayPopover()
     this.broadcastState()
@@ -312,6 +396,7 @@ export class AppController {
     this.mode = 'admin'
     this.message = null
     this.clearIdleTimer()
+    this.clearShellVisibilityAssert()
     setKeyboardHookActive(false)
     this.destroyLockWindows()
     setPcStatus(this.pc.id, 'locked', account.id)
@@ -793,12 +878,17 @@ export class AppController {
     this.destroyLockWindows()
     const displays = screen.getAllDisplays()
     const primaryId = screen.getPrimaryDisplay().id
+    bootLog(
+      `createLockWindows count=${displays.length} primary=${primaryId} shell=${isPixlWinlogonShell()}`
+    )
     for (const d of displays) {
       const role = d.id === primaryId ? 'primary' : 'secondary'
       const win = createLockWindow(d, role)
       this.hardenLockWindow(win)
       this.lockWindows.push(win)
     }
+    const primaryWin = this.lockWindows[0]
+    if (primaryWin) forceShellForeground(primaryWin)
   }
 
   private hardenLockWindow(win: BrowserWindow): void {
@@ -810,7 +900,9 @@ export class AppController {
     win.on('blur', () => {
       if (this.mode === 'lockscreen' && !win.isDestroyed()) {
         win.setAlwaysOnTop(true, 'screen-saver')
-        win.focus()
+        // Avoid focus thrash loops; steal only in shell mode.
+        if (isPixlWinlogonShell()) forceShellForeground(win)
+        else win.focus()
       }
     })
   }
@@ -999,6 +1091,8 @@ export class AppController {
   // ---- Admin quit path ----
 
   requestAdminQuit(): void {
+    bootLog('requestAdminQuit — maintenance + explorer spawn (this is why Quit "fixes" black screen)')
+    this.clearShellVisibilityAssert()
     enterMaintenanceMode()
     // When Pixl is the Winlogon shell, quitting leaves no desktop — start
     // Explorer so staff can maintain the machine in this session.

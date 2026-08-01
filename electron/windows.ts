@@ -1,6 +1,8 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { appIcon } from './assets'
+import { bootLog } from './bootLog'
+import { forceShellForeground, isPixlWinlogonShell } from './startup'
 
 // Centralised window creation. Handles loading the correct renderer route in
 // both dev (Vite dev server) and production (built files).
@@ -19,7 +21,28 @@ function loadRoute(win: BrowserWindow, route: string): void {
   if (devUrl) {
     void win.loadURL(`${devUrl}/index.html#/${route}`)
   } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'), { hash: `/${route}` })
+    // join(__dirname, ...) is absolute — safe when Winlogon starts us with cwd=System32.
+    const html = join(__dirname, '../renderer/index.html')
+    bootLog(`loadFile ${html}#/${route}`)
+    void win.loadFile(html, { hash: `/${route}` })
+  }
+}
+
+function assertLockVisible(win: BrowserWindow, reason: string, focus = false): void {
+  if (win.isDestroyed()) return
+  try {
+    if (!win.isVisible()) win.show()
+    win.setAlwaysOnTop(true, 'screen-saver')
+    win.moveTop()
+    if (focus) {
+      forceShellForeground(win)
+    }
+    bootLog(
+      `lock visible (${reason}) bounds=${JSON.stringify(win.getBounds())} ` +
+        `isVisible=${win.isVisible()} isFocused=${win.isFocused()}`
+    )
+  } catch (err) {
+    bootLog(`assertLockVisible failed (${reason}): ${String(err)}`)
   }
 }
 
@@ -28,20 +51,27 @@ export function createLockWindow(
   role: 'primary' | 'secondary'
 ): BrowserWindow {
   const { bounds } = display
+  const shellMode = isPixlWinlogonShell()
   const covered = {
     x: bounds.x - LOCK_BLEED,
     y: bounds.y - LOCK_BLEED,
     width: bounds.width + LOCK_BLEED * 2,
     height: bounds.height + LOCK_BLEED * 2
   }
+  bootLog(
+    `createLockWindow role=${role} shell=${shellMode} display=${JSON.stringify(bounds)}`
+  )
+
   const win = new BrowserWindow({
     x: covered.x,
     y: covered.y,
     width: covered.width,
     height: covered.height,
     frame: false,
-    fullscreen: false, // we manage bounds manually for multi-monitor coverage
-    roundedCorners: false, // avoid Win11 corner rounding revealing the desktop
+    // Shell replacement: fullscreen/kiosk is more reliable than manual bleed
+    // bounds when Explorer/DWM never started. Non-shell keeps bleed coverage.
+    fullscreen: shellMode,
+    roundedCorners: false,
     resizable: false,
     movable: false,
     minimizable: false,
@@ -49,25 +79,80 @@ export function createLockWindow(
     closable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    fullscreenable: false,
-    kiosk: false,
+    fullscreenable: true,
+    kiosk: shellMode,
     backgroundColor: '#0b1020',
-    show: false,
+    // Show immediately so backgroundColor covers the desktop while the
+    // renderer loads. Relying solely on ready-to-show can leave a black
+    // screen when Tray is created first (Electron win32 quirk).
+    show: true,
+    paintWhenInitiallyHidden: true,
     webPreferences: {
       preload: PRELOAD,
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      backgroundThrottling: false
     }
   })
   win.setAlwaysOnTop(true, 'screen-saver')
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-  win.setBounds(covered)
-  loadRoute(win, role === 'primary' ? 'lock?role=primary' : 'lock?role=secondary')
+  if (shellMode) {
+    try {
+      win.setKiosk(true)
+      win.setFullScreen(true)
+    } catch {
+      /* ignore */
+    }
+  } else {
+    win.setBounds(covered)
+  }
+
   win.once('ready-to-show', () => {
-    win.show()
-    win.focus()
+    assertLockVisible(win, 'ready-to-show', role === 'primary')
   })
+  win.webContents.once('did-finish-load', () => {
+    assertLockVisible(win, 'did-finish-load', role === 'primary')
+    if (shellMode) {
+      try {
+        win.setKiosk(true)
+        win.setFullScreen(true)
+      } catch {
+        /* ignore */
+      }
+      forceShellForeground(win)
+    }
+  })
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    bootLog(`did-fail-load code=${code} desc=${desc} url=${url}`)
+    console.warn(`[lock] did-fail-load code=${code} desc=${desc} url=${url}`)
+    // Retry once — cold shell boot sometimes races the asar extract/path.
+    setTimeout(() => {
+      if (!win.isDestroyed()) {
+        bootLog('retrying loadRoute after did-fail-load')
+        loadRoute(
+          win,
+          role === 'primary' ? 'lock?role=primary' : 'lock?role=secondary'
+        )
+      }
+    }, 500)
+  })
+  win.webContents.on('render-process-gone', (_e, details) => {
+    bootLog(`render-process-gone reason=${details.reason} exit=${details.exitCode}`)
+  })
+  win.on('unresponsive', () => {
+    bootLog('lock window unresponsive')
+  })
+
+  // Layered visibility asserts — shell cold start often needs several kicks.
+  for (const ms of shellMode ? [300, 1000, 2500, 5000, 10000] : [1500]) {
+    setTimeout(() => {
+      assertLockVisible(win, `timer-${ms}ms`, role === 'primary' && ms >= 1000)
+    }, ms)
+  }
+
+  loadRoute(win, role === 'primary' ? 'lock?role=primary' : 'lock?role=secondary')
+  if (role === 'primary') forceShellForeground(win)
   return win
 }
 
@@ -125,6 +210,7 @@ export function createAdminWindow(): BrowserWindow {
   win.once('ready-to-show', () => {
     win.show()
     win.focus()
+    forceShellForeground(win)
   })
   return win
 }

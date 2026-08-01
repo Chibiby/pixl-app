@@ -1,20 +1,59 @@
 import { app } from 'electron'
 import { config as loadDotenv } from 'dotenv'
-import { existsSync } from 'fs'
-import { join } from 'path'
+import { copyFileSync, existsSync, mkdirSync } from 'fs'
+import { dirname, join } from 'path'
 import os from 'os'
 
-// Load .env from the project root in dev, or next to the executable in prod.
-const envCandidates = [
-  join(process.cwd(), '.env'),
-  join(app.getAppPath(), '.env'),
-  join(process.resourcesPath ?? '', '.env')
-]
-for (const p of envCandidates) {
-  if (p && existsSync(p)) {
-    loadDotenv({ path: p })
-    break
+function programDataEnvPath(): string {
+  const base = process.env.ProgramData || 'C:\\ProgramData'
+  return join(base, 'Pixl', '.env')
+}
+
+function userDataEnvPath(): string {
+  try {
+    return join(app.getPath('userData'), '.env')
+  } catch {
+    return ''
   }
+}
+
+/**
+ * Prefer machine-local env that survives NSIS updates (ProgramData / userData).
+ * Fall back to packaged/resources copies for first install.
+ */
+function resolveEnvPath(): string | null {
+  const candidates = [
+    programDataEnvPath(),
+    userDataEnvPath(),
+    join(process.cwd(), '.env'),
+    join(app.getAppPath(), '.env'),
+    join(process.resourcesPath ?? '', '.env')
+  ]
+  for (const p of candidates) {
+    if (p && existsSync(p)) return p
+  }
+  return null
+}
+
+/** Copy a found env into ProgramData so the next update cannot wipe it. */
+function persistEnvToProgramData(source: string): void {
+  const dest = programDataEnvPath()
+  if (!dest || source === dest) return
+  try {
+    mkdirSync(dirname(dest), { recursive: true })
+    if (!existsSync(dest)) {
+      copyFileSync(source, dest)
+      console.log('[config] persisted .env to', dest)
+    }
+  } catch (err) {
+    console.warn('[config] could not persist .env to ProgramData:', err)
+  }
+}
+
+const resolved = resolveEnvPath()
+if (resolved) {
+  loadDotenv({ path: resolved })
+  if (app.isPackaged) persistEnvToProgramData(resolved)
 }
 
 export interface RuntimeConfig {
