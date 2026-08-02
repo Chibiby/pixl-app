@@ -1,6 +1,6 @@
 {
   "name": "pixl-app",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Pixl Pisonet kiosk client (lockscreen + session tray + admin panel)",
   "main": "out/main/main.js",
   "author": "Pixl",

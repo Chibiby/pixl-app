@@ -250,6 +250,11 @@ function registerIpc(): void {
 
 if (gotLock) {
   app.on('second-instance', () => {
+    // While quitting (disable/admin quit), do not recreate locks on the dying
+    // process — that stacks with the new instance's lockscreen after relaunch.
+    if (controller?.isAllowQuit()) {
+      return
+    }
     // Bring lockscreen back to front if a duplicate tried to launch.
     controller?.broadcastState()
     controller?.focusLockWindows()

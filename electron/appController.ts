@@ -56,7 +56,8 @@ import {
 import {
   createAdminWindow,
   createLockWindow,
-  createTrayPopover
+  createTrayPopover,
+  isLockWindow
 } from './windows'
 import { bootLog } from './bootLog'
 import { randomUUID } from 'crypto'
@@ -131,6 +132,12 @@ export class AppController {
   private lastTrayBounds: Electron.Rectangle | null = null
   /** Periodic shell-mode visibility reassert (cleared when leaving lockscreen). */
   private shellAssertTimer: ReturnType<typeof setInterval> | null = null
+  /** True while createLockWindows is mid destroy→create (blocks nested rebuilds). */
+  private lockCreateInProgress = false
+  /** Coalesce rebuild requests that arrive during an in-flight create. */
+  private lockCreatePending = false
+  /** Debounce display-added/removed rebuilds during boot/DWM churn. */
+  private displayChangeTimer: ReturnType<typeof setTimeout> | null = null
 
   init(): void {
     const cfg = getRuntimeConfig()
@@ -209,15 +216,23 @@ export class AppController {
   // ---- Mode transitions ----
 
   enterLockscreen(message: string | null): void {
+    const alreadyLocked = this.mode === 'lockscreen'
     this.mode = 'lockscreen'
     this.message = message
     this.teardownSession()
     this.closeAdminWindow()
     this.hideTrayPopover()
-    // Create + show lock windows FIRST. Killing Explorer before the first paint
-    // (previous v0.1.3 order) races DWM and yields a black screen that only
-    // "recovers" when Admin Quit spawns explorer.exe again.
-    this.createLockWindows()
+    // Reuse healthy coverage when already locked — full destroy→create races
+    // with display/shell events and can stack duplicate lock windows.
+    if (alreadyLocked && this.lockWindowsHealthy()) {
+      bootLog('enterLockscreen: reusing healthy lock windows')
+      this.focusLockWindows()
+    } else {
+      // Create + show lock windows FIRST. Killing Explorer before the first paint
+      // (previous v0.1.3 order) races DWM and yields a black screen that only
+      // "recovers" when Admin Quit spawns explorer.exe again.
+      this.createLockWindows()
+    }
     suppressDesktopShellDeferred(2500)
     this.startShellVisibilityAssert()
     setKeyboardHookActive(true)
@@ -231,8 +246,18 @@ export class AppController {
 
   /** Re-show / focus lock windows (e.g. second-instance while locked). */
   focusLockWindows(): void {
+    // Disable/quit destroys locks then app.quit(); a second launch while the
+    // old process still holds the single-instance lock must NOT recreate them.
+    if (this.allowQuit) {
+      bootLog('focusLockWindows skipped (quitting)')
+      return
+    }
     if (this.mode !== 'lockscreen') return
-    if (this.lockWindows.length === 0) {
+    if (this.lockCreateInProgress) {
+      this.lockCreatePending = true
+      return
+    }
+    if (!this.lockWindowsHealthy()) {
       this.createLockWindows()
       return
     }
@@ -253,8 +278,9 @@ export class AppController {
         this.clearShellVisibilityAssert()
         return
       }
-      if (this.lockWindows.length === 0) {
-        bootLog('shell assert: no lock windows — recreating')
+      if (this.allowQuit || this.lockCreateInProgress) return
+      if (!this.lockWindowsHealthy()) {
+        bootLog('shell assert: lock windows missing/unhealthy — recreating')
         this.createLockWindows()
         return
       }
@@ -897,21 +923,53 @@ export class AppController {
 
   // ---- Lock windows / displays ----
 
+  /** Alive lock windows matching the current display count (no gaps/orphans). */
+  private lockWindowsHealthy(): boolean {
+    if (this.lockCreateInProgress) return false
+    const displays = screen.getAllDisplays().length
+    if (displays === 0 || this.lockWindows.length !== displays) return false
+    return this.lockWindows.every((w) => !w.isDestroyed())
+  }
+
   private createLockWindows(): void {
-    this.destroyLockWindows()
-    const displays = screen.getAllDisplays()
-    const primaryId = screen.getPrimaryDisplay().id
-    bootLog(
-      `createLockWindows count=${displays.length} primary=${primaryId} shell=${isPixlWinlogonShell()}`
-    )
-    for (const d of displays) {
-      const role = d.id === primaryId ? 'primary' : 'secondary'
-      const win = createLockWindow(d, role)
-      this.hardenLockWindow(win)
-      this.lockWindows.push(win)
+    if (this.allowQuit) {
+      bootLog('createLockWindows skipped (quitting)')
+      return
     }
-    const primaryWin = this.lockWindows[0]
-    if (primaryWin) forceShellForeground(primaryWin)
+    // Nested creates (display events / shell assert mid-construction) used to
+    // clear the tracking array then push a second set → stacked lockscreens.
+    if (this.lockCreateInProgress) {
+      this.lockCreatePending = true
+      bootLog('createLockWindows coalesced (already in progress)')
+      return
+    }
+    this.lockCreateInProgress = true
+    this.lockCreatePending = false
+    try {
+      this.destroyLockWindows()
+      const displays = screen.getAllDisplays()
+      const primaryId = screen.getPrimaryDisplay().id
+      bootLog(
+        `createLockWindows count=${displays.length} primary=${primaryId} shell=${isPixlWinlogonShell()}`
+      )
+      for (const d of displays) {
+        const role = d.id === primaryId ? 'primary' : 'secondary'
+        const win = createLockWindow(d, role)
+        this.hardenLockWindow(win)
+        this.lockWindows.push(win)
+      }
+      const primaryWin = this.lockWindows[0]
+      if (primaryWin) forceShellForeground(primaryWin)
+    } finally {
+      this.lockCreateInProgress = false
+      if (this.lockCreatePending && this.mode === 'lockscreen' && !this.allowQuit) {
+        this.lockCreatePending = false
+        bootLog('createLockWindows running coalesced rebuild')
+        this.createLockWindows()
+      } else {
+        this.lockCreatePending = false
+      }
+    }
   }
 
   private hardenLockWindow(win: BrowserWindow): void {
@@ -921,6 +979,7 @@ export class AppController {
     })
     // Re-assert always-on-top if focus is lost.
     win.on('blur', () => {
+      if (this.allowQuit) return
       if (this.mode === 'lockscreen' && !win.isDestroyed()) {
         win.setAlwaysOnTop(true, 'screen-saver')
         // Avoid focus thrash loops; steal only in shell mode.
@@ -931,18 +990,34 @@ export class AppController {
   }
 
   private destroyLockWindows(): void {
+    const seen = new Set<BrowserWindow>()
     for (const w of this.lockWindows) {
+      seen.add(w)
       if (!w.isDestroyed()) {
         w.removeAllListeners('close')
         w.destroy()
       }
     }
+    // Sweep orphans from reentrant creates that escaped the tracking array.
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (seen.has(w) || w.isDestroyed() || !isLockWindow(w)) continue
+      bootLog('destroyLockWindows: sweeping orphan lock window')
+      w.removeAllListeners('close')
+      w.destroy()
+    }
     this.lockWindows = []
   }
 
   private handleDisplayChange(): void {
-    // Rebuild coverage immediately so a newly plugged-in monitor is covered.
-    if (this.mode === 'lockscreen') this.createLockWindows()
+    if (this.allowQuit || this.mode !== 'lockscreen') return
+    // Debounce: cold boot / kiosk fullscreen often fires rapid display events.
+    if (this.displayChangeTimer) clearTimeout(this.displayChangeTimer)
+    this.displayChangeTimer = setTimeout(() => {
+      this.displayChangeTimer = null
+      if (this.allowQuit || this.mode !== 'lockscreen') return
+      bootLog('display change — rebuilding lock windows')
+      this.createLockWindows()
+    }, 200)
   }
 
   // ---- Tray popover ----

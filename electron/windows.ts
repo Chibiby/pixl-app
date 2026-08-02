@@ -16,6 +16,17 @@ const PRELOAD = join(__dirname, '../preload/preload.js')
 // the square, fully-covered interior is visible.
 const LOCK_BLEED = 8
 
+/** Tracks lock BrowserWindows so rebuilds can sweep orphans left by races. */
+const lockWindowSet = new WeakSet<BrowserWindow>()
+
+export function isLockWindow(win: BrowserWindow): boolean {
+  return lockWindowSet.has(win)
+}
+
+function markLockWindow(win: BrowserWindow): void {
+  lockWindowSet.add(win)
+}
+
 function loadRoute(win: BrowserWindow, route: string): void {
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (devUrl) {
@@ -95,6 +106,8 @@ export function createLockWindow(
       backgroundThrottling: false
     }
   })
+  // Tag immediately so a mid-construction race can still sweep this window.
+  markLockWindow(win)
   win.setAlwaysOnTop(true, 'screen-saver')
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   if (shellMode) {

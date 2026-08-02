@@ -11,6 +11,7 @@ import {
   formatPesos,
   pesosToCentavos
 } from '../../hooks/usePixl'
+import { PasswordInput } from '../../components/PasswordInput'
 import { IconClose } from './icons'
 import {
   EmptyState,
@@ -436,10 +437,9 @@ function EditForm({
           <label className="lock-label" htmlFor={`edit-pw-${account.id}`}>
             New password
           </label>
-          <input
+          <PasswordInput
             id={`edit-pw-${account.id}`}
             className="input input-sm"
-            type="password"
             autoComplete="new-password"
             placeholder="leave blank to keep"
             value={password}
@@ -450,10 +450,9 @@ function EditForm({
           <label className="lock-label" htmlFor={`edit-pw2-${account.id}`}>
             Confirm password
           </label>
-          <input
+          <PasswordInput
             id={`edit-pw2-${account.id}`}
             className="input input-sm"
-            type="password"
             autoComplete="new-password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}

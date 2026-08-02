@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import type { AccountPublic, AccountRole } from '@shared/types'
 import { formatPesos, usePesoRate } from '../../hooks/usePixl'
+import { PasswordInput } from '../../components/PasswordInput'
 import { AccountDrawer } from './AccountDrawer'
 import { IconPlus, IconSearch } from './icons'
 import {
@@ -298,10 +299,9 @@ function CreateAccountForm({
           <label className="lock-label" htmlFor="new-password">
             Password
           </label>
-          <input
+          <PasswordInput
             id="new-password"
             className="input input-sm"
-            type="password"
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

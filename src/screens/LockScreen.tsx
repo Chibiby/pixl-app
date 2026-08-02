@@ -9,6 +9,7 @@ import {
   formatPesos,
   pesosToCentavos
 } from '../hooks/usePixl'
+import { PasswordInput } from '../components/PasswordInput'
 import { Wordmark } from '../components/Wordmark'
 import './LockScreen.css'
 
@@ -544,10 +545,9 @@ export function LockScreen({ role }: Props): JSX.Element {
             <label className="lock-label" htmlFor="lock-password">
               Password
             </label>
-            <input
+            <PasswordInput
               id="lock-password"
               className="input"
-              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"

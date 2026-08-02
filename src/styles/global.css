@@ -284,6 +284,71 @@ h3 {
   font-size: var(--fs-sm);
 }
 
+/* Password field: trailing show/hide toggle inside the input. */
+.password-field {
+  position: relative;
+  width: 100%;
+}
+
+.password-field > .input {
+  padding-right: 44px;
+}
+
+.password-field > .input.input-sm {
+  padding-right: 38px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+}
+
+.password-field > .input.input-sm + .password-toggle {
+  width: 28px;
+  height: 28px;
+  right: 4px;
+}
+
+.password-toggle:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.password-toggle:focus-visible {
+  outline: none;
+  color: var(--text);
+  box-shadow: var(--focus-ring);
+}
+
+.password-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.password-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.password-field > .input.input-sm + .password-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
 .field {
   display: flex;
   flex-direction: column;
