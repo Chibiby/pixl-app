@@ -1176,6 +1176,8 @@ export class AppController {
       if (Date.now() >= this.idleDeadline) {
         this.clearIdleTimer()
         endSessionShutdownLog()
+        // Clear deadline in UI even if OS shutdown is suppressed (dev/guard).
+        this.broadcastState()
         shutdownWindows('idle timeout on lockscreen')
       }
     }, 1000)

@@ -273,8 +273,11 @@ if (gotLock) {
   })
 
   app.whenReady().then(() => {
-    // Dev safety: never shut the machine down while developing.
-    if (!app.isPackaged) process.env.PIXL_NO_SHUTDOWN = '1'
+    // Dev safety: never shut the machine down while developing, unless the
+    // operator explicitly opts in (unpackaged production-build smoke tests).
+    if (!app.isPackaged && process.env.PIXL_ALLOW_SHUTDOWN !== '1') {
+      process.env.PIXL_NO_SHUTDOWN = '1'
+    }
 
     const displays = screen.getAllDisplays().map((d) => ({
       id: d.id,
