@@ -169,6 +169,18 @@ export function createLockWindow(
   return win
 }
 
+/**
+ * Ignore tray-popover blur→hide until this timestamp. Login auto-show races
+ * Explorer restore (`ensureDesktopShell`): the taskbar steals focus a moment
+ * after show, which would otherwise flash-then-dismiss the session HUD.
+ */
+let ignoreTrayBlurUntil = 0
+
+/** Suppress blur-hide for `ms` (call before auto-showing after login). */
+export function suppressTrayPopoverBlur(ms = 4000): void {
+  ignoreTrayBlurUntil = Math.max(ignoreTrayBlurUntil, Date.now() + Math.max(0, ms))
+}
+
 export function createTrayPopover(): BrowserWindow {
   const win = new BrowserWindow({
     // Sized to the session HUD layout in src/screens/TrayPopover.css.
@@ -191,6 +203,7 @@ export function createTrayPopover(): BrowserWindow {
   })
   loadRoute(win, 'tray')
   win.on('blur', () => {
+    if (Date.now() < ignoreTrayBlurUntil) return
     if (!win.isDestroyed()) win.hide()
   })
   return win

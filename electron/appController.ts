@@ -57,7 +57,8 @@ import {
   createAdminWindow,
   createLockWindow,
   createTrayPopover,
-  isLockWindow
+  isLockWindow,
+  suppressTrayPopoverBlur
 } from './windows'
 import { bootLog } from './bootLog'
 import { randomUUID } from 'crypto'
@@ -1047,9 +1048,13 @@ export class AppController {
   private autoShowTrayPopover(): void {
     this.ensureTrayPopover()
     const win = this.trayPopover!
+    // Explorer/taskbar restore after login steals focus; without a grace window
+    // the popover's blur handler hides it immediately (flash then disappear).
+    suppressTrayPopoverBlur(4000)
     if (win.isVisible()) {
       const snap = this.buildSnapshot()
       if (snap) win.webContents.send(IPC.onSessionTick, snap)
+      win.focus()
       return
     }
     const bounds = this.lastTrayBounds ?? this.bottomRightTrayAnchor()
