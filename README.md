@@ -336,7 +336,10 @@ While that flag matches the current boot, the watchdog **pauses relaunch** so
 the app can stay closed for maintenance. Protection resumes when Pixl is
 launched again (flag cleared on startup) or after a PC restart (stale flag).
 **End Task** / killing the process without using Quit (maintenance) still
-triggers a relaunch — the service keeps running.
+triggers a relaunch — the service keeps running. Relaunch targets the
+**interactive console user session** (not Session 0 / SYSTEM). Multiple
+`pixl.exe` processes under one user are normal (Electron); a `pixl.exe`
+running as **SYSTEM** is not healthy and indicates a bad relaunch path.
 
 A reboot or the next cafe-user login returns to the **Pixl shell** (Explorer was
 only started for that maintenance session; the Winlogon `Shell` value is

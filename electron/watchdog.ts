@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import { execFileSync } from 'child_process'
+import crypto from 'crypto'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -11,6 +12,59 @@ import { isAppFullyDisabled } from './disable'
 
 // WinSW <id> / service name (legacy node-windows used the same id; display name PixlWatchdog).
 export const WATCHDOG_SERVICE_NAME = 'pixlwatchdog.exe'
+
+function programDataWatchdogDir(): string {
+  return path.join(process.env.ProgramData || 'C:\\ProgramData', 'Pixl', 'watchdog')
+}
+
+function fileContentHash(filePath: string): string | null {
+  try {
+    return crypto.createHash('sha1').update(fs.readFileSync(filePath)).digest('hex')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Best-effort: keep %ProgramData%\Pixl\watchdog\watchdog-runner.js in sync with
+ * the packaged copy (electron-updater can leave ProgramData stale until a full
+ * customInstall). Returns true when the dest file was written/changed.
+ */
+function syncWatchdogRunnerFromPackage(): boolean {
+  if (!app.isPackaged || process.platform !== 'win32') return false
+  const src = path.join(process.resourcesPath, 'watchdog', 'watchdog-runner.js')
+  const destDir = programDataWatchdogDir()
+  const dest = path.join(destDir, 'watchdog-runner.js')
+  try {
+    if (!fs.existsSync(src)) {
+      console.warn('[watchdog] packaged runner missing; skip sync:', src)
+      return false
+    }
+    const srcStat = fs.statSync(src)
+    let needsCopy = !fs.existsSync(dest)
+    if (!needsCopy) {
+      const destStat = fs.statSync(dest)
+      if (srcStat.size !== destStat.size) {
+        needsCopy = true
+      } else {
+        const srcHash = fileContentHash(src)
+        const destHash = fileContentHash(dest)
+        needsCopy = !srcHash || !destHash || srcHash !== destHash
+      }
+    }
+    if (!needsCopy) {
+      console.log('[watchdog] ProgramData runner already matches packaged copy')
+      return false
+    }
+    fs.mkdirSync(destDir, { recursive: true })
+    fs.copyFileSync(src, dest)
+    console.log('[watchdog] synced watchdog-runner.js →', dest)
+    return true
+  } catch (err) {
+    console.warn('[watchdog] failed to sync watchdog-runner.js:', err)
+    return false
+  }
+}
 
 export function getExecutablePath(): string {
   return process.execPath
@@ -58,6 +112,12 @@ export function ensureWatchdogProtection(): void {
     console.log('[watchdog] app fully disabled; not starting protection')
     return
   }
+  let runnerReloaded = false
+  try {
+    runnerReloaded = syncWatchdogRunnerFromPackage()
+  } catch (err) {
+    console.warn('[watchdog] syncWatchdogRunnerFromPackage threw:', err)
+  }
   const flagPath = getMaintenanceFlagPath()
   try {
     if (fs.existsSync(flagPath)) {
@@ -66,6 +126,10 @@ export function ensureWatchdogProtection(): void {
     }
   } catch (err) {
     console.warn('[watchdog] failed to clear maintenance flag:', err)
+  }
+  if (runnerReloaded) {
+    // WinSW keeps the old script until the service process restarts.
+    stopWatchdogService()
   }
   try {
     execFileSync('sc', ['start', WATCHDOG_SERVICE_NAME], { windowsHide: true })

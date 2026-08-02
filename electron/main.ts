@@ -51,6 +51,7 @@ import {
   installUpdateNow
 } from './updater'
 import { bootLog } from './bootLog'
+import { isNonInteractiveSystemSession, sessionBootHint } from './sessionGuard'
 
 // Packaged kiosk as Winlogon Shell: GPU compositing often yields a pure black
 // HWND when Explorer/DWM never started. Admin→Quit appears to "fix" it only
@@ -64,6 +65,17 @@ if (process.platform === 'win32') {
   } catch (err) {
     bootLog(`disableHardwareAcceleration failed: ${String(err)}`)
   }
+}
+
+// Never run the kiosk UI as SYSTEM / Session 0 (watchdog mis-spawn). Quit before
+// taking the single-instance lock so a real interactive instance can start.
+const refuseNonInteractive =
+  app.isPackaged && process.platform === 'win32' && isNonInteractiveSystemSession()
+if (refuseNonInteractive) {
+  bootLog(
+    `REFUSING to start as non-interactive/SYSTEM session (${sessionBootHint()}). ` +
+      `Watchdog must relaunch into the active console user — not Session 0.`
+  )
 }
 
 // Kiosk resilience: never let an unhandled error tear the process down. The
@@ -82,7 +94,7 @@ process.on('uncaughtException', (err) => {
 // Must not run whenReady / ensureWatchdogProtection on the secondary — that
 // would clear maintenance.stop while an admin quit is in flight and let the
 // watchdog relaunch immediately.
-const gotLock = app.requestSingleInstanceLock()
+const gotLock = refuseNonInteractive ? false : app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 }
@@ -272,7 +284,8 @@ if (gotLock) {
     bootLog(
       `whenReady packaged=${app.isPackaged} version=${app.getVersion()} ` +
         `execPath=${process.execPath} cwd=${process.cwd()} ` +
-        `shell=${isPixlWinlogonShell()} displays=${JSON.stringify(displays)}`
+        `${sessionBootHint()} shell=${isPixlWinlogonShell()} ` +
+        `displays=${JSON.stringify(displays)}`
     )
 
     // Kiosk UI: no application menu (removes the File/Edit/View/Window bar on the
