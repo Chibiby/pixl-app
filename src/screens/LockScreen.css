@@ -137,6 +137,14 @@
 .lock-spec-eq {
   color: var(--text-faint);
 }
+.lock-idle-countdown {
+  margin: 10px 0 0;
+  padding: 0 2px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
 
 /* Link state: a live dot plus label, tinted by connectivity. */
 .lock-link {

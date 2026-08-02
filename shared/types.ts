@@ -134,6 +134,11 @@ export interface ModeState {
    * Null when not in a chooser handoff.
    */
   chooserDeadlineAt?: number | null
+  /**
+   * Epoch ms when the lockscreen idle auto-shutdown fires.
+   * Null when the idle timer is inactive (disabled, in session, or cleared).
+   */
+  idleDeadlineAt?: number | null
 }
 
 /** Live session data pushed to the tray popover roughly once a second. */

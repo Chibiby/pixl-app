@@ -1,6 +1,7 @@
-// Watchdog loop. Runs as a Windows service (registered via node-windows). Every
-// few seconds it checks whether the Pixl kiosk process is alive and relaunches
-// it if not. Kept intentionally tiny and dependency-free so it is robust.
+// Watchdog loop. Runs as a Windows service via WinSW (pixlwatchdog.exe) under
+// portable Node from %ProgramData%\Pixl\watchdog\node.exe. Every few seconds it
+// checks whether the Pixl kiosk process is alive and relaunches it if not.
+// Kept intentionally tiny and dependency-free so it is robust.
 
 const { execFile, spawn } = require('child_process')
 const fs = require('fs')
@@ -14,6 +15,8 @@ const EXE_NAME = EXE_PATH ? path.basename(EXE_PATH) : 'Pixl.exe'
 const PUBLIC_DIR =
   process.env.PUBLIC || path.join(process.env.SystemDrive || 'C:', 'Users', 'Public')
 const MAINTENANCE_FLAG = path.join(PUBLIC_DIR, 'Pixl', 'maintenance.stop')
+// Persistent master-disable (survives reboot). Presence alone is enough.
+const DISABLED_FLAG = path.join(PUBLIC_DIR, 'Pixl', 'disabled.flag')
 // Allow a few seconds of clock/uptime skew between app and service.
 const BOOT_STAMP_TOLERANCE_SEC = 5
 
@@ -23,6 +26,11 @@ function log(msg) {
 
 function getBootStamp() {
   return Math.floor((Date.now() - os.uptime() * 1000) / 1000)
+}
+
+/** @returns {boolean} true if relaunch should be skipped (admin master-disable). */
+function isAppDisabled() {
+  return fs.existsSync(DISABLED_FLAG)
 }
 
 /** @returns {boolean} true if relaunch should be skipped (active maintenance). */
@@ -88,6 +96,10 @@ function tick() {
   isRunning((alive) => {
     if (!alive) {
       log(`${EXE_NAME} not running.`)
+      if (isAppDisabled()) {
+        log('Disabled flag present; skipping relaunch (master disable).')
+        return
+      }
       if (isMaintenanceActive()) {
         log('Maintenance flag matches current boot; skipping relaunch.')
         return

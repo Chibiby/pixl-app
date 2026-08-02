@@ -23,6 +23,13 @@ function formatAutoLock(totalSeconds: number): string {
   return `Auto lock in ${m}m ${sec}s`
 }
 
+function formatIdleShutdown(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds))
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return `Shuts down in ${m}m ${sec}s`
+}
+
 interface Props {
   role: 'primary' | 'secondary'
 }
@@ -79,6 +86,19 @@ export function LockScreen({ role }: Props): JSX.Element {
   const chooserSecondsLeft =
     chooserDeadlineAt != null ? Math.max(0, Math.ceil((chooserDeadlineAt - now) / 1000)) : null
 
+  // Idle auto-shutdown: main-process deadline; tick locally like the chooser.
+  const idleShutdownSeconds = mode?.pc?.idleShutdownSeconds ?? 0
+  const idleDeadlineAt =
+    !pending &&
+    mode?.mode === 'lockscreen' &&
+    idleShutdownSeconds > 0 &&
+    mode.idleDeadlineAt != null &&
+    mode.idleDeadlineAt > 0
+      ? mode.idleDeadlineAt
+      : null
+  const idleSecondsLeft =
+    idleDeadlineAt != null ? Math.max(0, Math.ceil((idleDeadlineAt - now) / 1000)) : null
+
   function clearNeedsTimeHandoff(message: string | null): void {
     setNeedsTime(false)
     setNeedsTimeAccount(null)
@@ -114,19 +134,19 @@ export function LockScreen({ role }: Props): JSX.Element {
     setLocalChooserDeadlineAt(null)
   }, [pending, needsTime, needsTimeAccount])
 
-  // Tick countdown; on local needs_time expiry clear handoff.
+  // Tick chooser / idle countdowns; on local needs_time expiry clear handoff.
   useEffect(() => {
-    if (chooserDeadlineAt == null) return
+    if (chooserDeadlineAt == null && idleDeadlineAt == null) return
     const id = window.setInterval(() => {
       const t = Date.now()
       setNow(t)
-      if (t < chooserDeadlineAt) return
+      if (chooserDeadlineAt == null || t < chooserDeadlineAt) return
       if (pending) return // main cancelPendingResume owns pendingResume timeout
       clearNeedsTimeHandoff(CHOOSER_TIMEOUT_MESSAGE)
       void window.pixl.cancelPendingResume()
     }, 250)
     return () => window.clearInterval(id)
-  }, [chooserDeadlineAt, pending])
+  }, [chooserDeadlineAt, idleDeadlineAt, pending])
 
   async function signIn(purchaseCentavos = 0): Promise<void> {
     if (busy || !username || !password) return
@@ -485,6 +505,12 @@ export function LockScreen({ role }: Props): JSX.Element {
               </dd>
             </div>
           </dl>
+
+          {idleSecondsLeft != null && (
+            <p className="lock-idle-countdown num" aria-live="polite">
+              {formatIdleShutdown(idleSecondsLeft)}
+            </p>
+          )}
         </section>
 
         <form className="lock-card" onSubmit={onSubmit} aria-busy={busy}>

@@ -43,6 +43,7 @@ import {
 import { initKeyboardHook, disposeKeyboardHook } from './keyboardHook'
 import { isPixlWinlogonShell, registerStartup } from './startup'
 import { ensureWatchdogProtection } from './watchdog'
+import { isAppFullyDisabled } from './disable'
 import {
   checkForUpdates,
   getUpdateStatus,
@@ -129,6 +130,7 @@ function registerIpc(): void {
       )
       // Only `ok` starts a client session. Outcomes like `no_credits`,
       // `needs_time`, `invalid_credentials`, etc. must never call startClientSession.
+      // (Master disable is handled inside attemptLogin — no login_account for clients.)
       if (result.outcome === 'ok' && result.account) {
         // A timed session may be started with a top-up in the same call, so the
         // purchase has to land before the session snapshots the balances.
@@ -224,6 +226,20 @@ function registerIpc(): void {
     controller.requestAdminQuit()
   })
 
+  ipcMain.handle(IPC.adminGetAppEnabled, () => !isAppFullyDisabled())
+
+  ipcMain.handle(IPC.adminSetAppEnabled, (_e, enabled: boolean) => {
+    if (!controller.getAdminAccount()) {
+      throw new Error('Admin session required')
+    }
+    if (enabled) {
+      controller.enableAppAndResumeKiosk()
+      return true
+    }
+    controller.requestAdminDisable()
+    return false
+  })
+
   ipcMain.handle(IPC.getSyncStatus, () => getSyncStatus())
   ipcMain.handle(IPC.forceSync, () => forceSync())
 
@@ -281,12 +297,24 @@ if (gotLock) {
       prepareForInstall: () => controller.prepareForUpdateInstall()
     })
     registerIpc()
-    initKeyboardHook()
+    const fullyDisabled = isAppFullyDisabled()
+    if (fullyDisabled) {
+      // Lightweight disabled boot: lockscreen for admin login/enable only.
+      // Skip keyboard hook so staff can use normal desktop shortcuts while
+      // re-enabling; client play is blocked in the login handler.
+      bootLog('app fully disabled — lockscreen for admin enable only')
+    } else {
+      initKeyboardHook()
+    }
     // Tray is deferred until a client session starts (ensureTray).
     controller.init()
 
-    registerStartup()
-    ensureWatchdogProtection()
+    if (fullyDisabled) {
+      bootLog('skipping registerStartup + ensureWatchdogProtection (disabled.flag)')
+    } else {
+      registerStartup()
+      ensureWatchdogProtection()
+    }
 
     onSyncStatus((status) => {
       controller.setOnline(status.online)

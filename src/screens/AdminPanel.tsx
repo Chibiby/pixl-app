@@ -64,7 +64,7 @@ const SECTIONS: SectionDef[] = [
     id: 'settings',
     label: 'Settings',
     icon: IconSettings,
-    blurb: 'Pricing, idle shutdown and session runway reminders.'
+    blurb: 'Pricing, idle shutdown, reminders, and master enable/disable for this PC.'
   }
 ]
 

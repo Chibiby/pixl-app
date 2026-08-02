@@ -1,0 +1,45 @@
+Pixl cafe PC — post-install checklist
+=====================================
+
+This file is copied to %ProgramData%\Pixl\OPERATOR.txt on install.
+
+1) Configure environment
+   - Edit (or create) %ProgramData%\Pixl\.env
+   - Start from %ProgramData%\Pixl\.env.example (install does not overwrite an existing .env)
+   - Set at least SUPABASE_URL and SUPABASE_ANON_KEY when online sync is needed
+   - Optional: PIXL_PC_NAME, PIXL_ADMIN_MACHINE=1 on the owner/admin PC only
+
+2) Run as a Standard cafe user
+   - Create a dedicated Windows Standard account (e.g. cafeuser), not Administrator
+   - Keep a separate admin account with a normal Explorer desktop for maintenance
+
+3) Optional: Pixl as Windows shell (cafe seats only)
+   - Do NOT set the shell while logged in as an admin — that replaces Explorer for that account
+   - Log in as the cafe Standard user, then run (no elevation needed for HKCU):
+
+       powershell -ExecutionPolicy Bypass -File "C:\Program Files\Pixl\resources\set-cafe-shell.ps1"
+
+   - Restore Explorer later:
+
+       powershell -ExecutionPolicy Bypass -File "C:\Program Files\Pixl\resources\set-cafe-shell.ps1" -Restore
+
+   - Offline / another user: see the script header (load NTUSER.DAT, pass -HiveRoot)
+
+4) Antivirus exclusion (Win key / Alt+Tab hook)
+   - If keyboard lockdown fails, AV may quarantine WinKeyServer.exe
+   - Exclude the Pixl install folder, typically:
+
+       C:\Program Files\Pixl\
+
+   - Especially the unpacked helper under app.asar.unpacked (node-global-key-listener / WinKeyServer.exe)
+
+5) Deep Freeze / similar
+   - Freeze only after: Pixl installed, watchdog service registered, .env filled, cafe shell set
+   - Thaw before app updates, shell changes, or watchdog changes; freeze again when stable
+
+6) Watchdog
+   - The all-in-one installer (pixl.exe / pixl-setup-x.y.z.exe) registers PixlWatchdog (Automatic)
+   - Service name: pixlwatchdog.exe — relaunches Pixl if the process is killed
+   - If missing after install, run elevated:
+       "C:\Program Files\Pixl\resources\watchdog\install.cmd"
+   - Log: %ProgramData%\Pixl\watchdog-install.log

@@ -49,6 +49,8 @@ export const IPC = {
   adminListLedger: 'admin:listLedger',
   adminGetStats: 'admin:getStats',
   adminQuitApp: 'admin:quitApp',
+  adminGetAppEnabled: 'admin:getAppEnabled',
+  adminSetAppEnabled: 'admin:setAppEnabled',
   getSyncStatus: 'sync:status',
   forceSync: 'sync:force',
   getUpdateStatus: 'update:status',
@@ -104,6 +106,13 @@ export interface PixlApi {
   adminListLedger(filter?: AdminLedgerFilter): Promise<AdminLedgerPage>
   adminGetStats(): Promise<AdminStats>
   adminQuitApp(): Promise<void>
+  /** Whether Pixl is enabled on this PC (false = persistent master disable). */
+  adminGetAppEnabled(): Promise<boolean>
+  /**
+   * Enable or disable Pixl on this PC. Disable quits the app after removing
+   * autostart; enable restores autostart/watchdog without quitting.
+   */
+  adminSetAppEnabled(enabled: boolean): Promise<boolean>
 
   getSyncStatus(): Promise<SyncStatus>
   forceSync(): Promise<SyncStatus>

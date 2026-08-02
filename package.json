@@ -1,6 +1,6 @@
 {
   "name": "pixl-app",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Pixl Pisonet kiosk client (lockscreen + session tray + admin panel)",
   "main": "out/main/main.js",
   "author": "Pixl",
@@ -14,7 +14,8 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "build": "npm run typecheck && electron-vite build",
     "rebuild": "node scripts/rebuild-sqlite.js",
-    "package:win": "npm run build && electron-builder --win",
+    "package:win": "node scripts/fetch-watchdog-runtime.js && npm run build && electron-builder --win && node scripts/copy-pixl-installer.js",
+    "watchdog:fetch-runtime": "node scripts/fetch-watchdog-runtime.js",
     "watchdog:install": "node scripts/watchdog-install.js",
     "watchdog:uninstall": "node scripts/watchdog-uninstall.js"
   },
@@ -23,8 +24,7 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "12.11.1",
     "dotenv": "^17.4.2",
-    "electron-updater": "^6.8.9",
-    "node-windows": "^1.0.0-beta.8"
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
@@ -64,6 +64,14 @@
         "to": ".env.example"
       },
       {
+        "from": "build/OPERATOR.txt",
+        "to": "OPERATOR.txt"
+      },
+      {
+        "from": "scripts/set-cafe-shell.ps1",
+        "to": "set-cafe-shell.ps1"
+      },
+      {
         "from": "build/icon.png",
         "to": "icon.png"
       },
@@ -91,7 +99,9 @@
       "perMachine": true,
       "allowElevation": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "include": "build/installer.nsh",
+      "artifactName": "pixl-setup-${version}.${ext}"
     },
     "publish": {
       "provider": "github",

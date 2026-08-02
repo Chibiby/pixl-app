@@ -38,15 +38,20 @@ import {
   updateSessionUsage
 } from './sync/sqlite'
 import { purchaseTime, refundTimeToCredits } from './credits'
-import { enterMaintenanceMode } from './watchdog'
+import { enterMaintenanceMode, ensureWatchdogProtection } from './watchdog'
+import { isAppFullyDisabled, setAppFullyDisabled } from './disable'
 import { checkForUpdatesWhenIdle, maybeInstallPendingUpdate } from './updater'
 import { SessionTimer } from './session/timer'
 import { shutdownWindows } from './shutdown'
-import { setKeyboardHookActive } from './keyboardHook'
+import { initKeyboardHook, setKeyboardHookActive } from './keyboardHook'
 import {
+  cancelSuppressDesktopShell,
+  ensureDesktopShell,
   forceShellForeground,
   isPixlWinlogonShell,
-  suppressDesktopShellDeferred
+  registerStartup,
+  suppressDesktopShellDeferred,
+  unregisterStartup
 } from './startup'
 import {
   createAdminWindow,
@@ -133,7 +138,10 @@ export class AppController {
     screen.on('display-added', () => this.handleDisplayChange())
     screen.on('display-removed', () => this.handleDisplayChange())
     bootLog(`AppController.init pc=${this.pc.name} id=${this.pc.id}`)
-    this.enterLockscreen(null)
+    const disabledMsg = isAppFullyDisabled()
+      ? 'Pixl is disabled on this PC. Sign in as admin to re-enable.'
+      : null
+    this.enterLockscreen(disabledMsg)
   }
 
   // ---- Accessors for IPC ----
@@ -193,7 +201,8 @@ export class AppController {
       pendingResume: this.pendingAccount
         ? { account: this.pendingAccount, fromMode: 'open' }
         : null,
-      chooserDeadlineAt: this.chooserDeadlineAt
+      chooserDeadlineAt: this.chooserDeadlineAt,
+      idleDeadlineAt: this.idleDeadline > 0 ? this.idleDeadline : null
     }
   }
 
@@ -301,6 +310,9 @@ export class AppController {
     this.clearShellVisibilityAssert()
     setKeyboardHookActive(false)
     this.destroyLockWindows()
+    // Cancel deferred lockscreen explorer kills, then restore taskbar/desktop.
+    cancelSuppressDesktopShell()
+    ensureDesktopShell()
 
     const session = createSession(account.id, this.pc.id, mode)
     setPcStatus(this.pc.id, 'in_session', account.id)
@@ -347,6 +359,9 @@ export class AppController {
     this.clearShellVisibilityAssert()
     setKeyboardHookActive(false)
     this.destroyLockWindows()
+    // Cancel deferred lockscreen explorer kills, then restore taskbar/desktop.
+    cancelSuppressDesktopShell()
+    ensureDesktopShell()
 
     updateSessionMode(park.sessionId, mode)
     setPcStatus(this.pc.id, 'in_session', account.id)
@@ -399,6 +414,9 @@ export class AppController {
     this.clearShellVisibilityAssert()
     setKeyboardHookActive(false)
     this.destroyLockWindows()
+    // Admin needs desktop/taskbar the same as a client session.
+    cancelSuppressDesktopShell()
+    ensureDesktopShell()
     setPcStatus(this.pc.id, 'locked', account.id)
     if (!this.adminWindow || this.adminWindow.isDestroyed()) {
       this.adminWindow = createAdminWindow()
@@ -624,6 +642,8 @@ export class AppController {
     } else {
       this.message = message
     }
+    // Don't idle-shutdown while the player is picking time on the chooser.
+    this.clearIdleTimer()
     if (restartTimer || this.chooserDeadlineAt == null) {
       this.startChooserTimer()
     }
@@ -636,6 +656,8 @@ export class AppController {
     this.pendingAccount = null
     this.finalizeParkedVisit('logout')
     this.message = null
+    // Back to an empty lockscreen — resume idle auto-shutdown.
+    this.startIdleTimer()
     this.broadcastState()
   }
 
@@ -648,6 +670,7 @@ export class AppController {
       this.pendingAccount = null
       this.finalizeParkedVisit('logout')
       this.message = 'Timed out — sign in again to continue'
+      this.startIdleTimer()
       this.broadcastState()
     }, AppController.CHOOSER_TIMEOUT_MS)
   }
@@ -1086,6 +1109,7 @@ export class AppController {
   private clearIdleTimer(): void {
     if (this.idleTimer) clearInterval(this.idleTimer)
     this.idleTimer = null
+    this.idleDeadline = 0
   }
 
   // ---- Admin quit path ----
@@ -1093,6 +1117,8 @@ export class AppController {
   requestAdminQuit(): void {
     bootLog('requestAdminQuit — maintenance + explorer spawn (this is why Quit "fixes" black screen)')
     this.clearShellVisibilityAssert()
+    // Stop any lockscreen deferred kills before we hand the desktop back.
+    cancelSuppressDesktopShell()
     enterMaintenanceMode()
     // When Pixl is the Winlogon shell, quitting leaves no desktop — start
     // Explorer so staff can maintain the machine in this session.
@@ -1110,6 +1136,60 @@ export class AppController {
     this.teardownSession()
     this.finalizeParkedVisit('admin')
     app.quit()
+  }
+
+  /**
+   * Persistent master disable: remove autostart, pause watchdog for this
+   * session, restore Explorer, and quit. Survives reboots via disabled.flag.
+   * Aborts (throws) if the flag cannot be written — no unregister/quit.
+   */
+  requestAdminDisable(): void {
+    bootLog('requestAdminDisable — persistent disable + unregister startup + quit')
+    setAppFullyDisabled(true)
+    if (!isAppFullyDisabled()) {
+      throw new Error('disabled.flag missing after write; aborting disable')
+    }
+    this.clearShellVisibilityAssert()
+    // Stop any lockscreen deferred kills before we hand the desktop back.
+    // Do not use ensureDesktopShell() after unregisterStartup — Shell no longer
+    // points at Pixl, so that helper would no-op.
+    cancelSuppressDesktopShell()
+    unregisterStartup()
+    // Also write boot-scoped maintenance so this session stays quiet even if
+    // the service is still running briefly before it notices disabled.flag.
+    enterMaintenanceMode()
+    if (process.platform === 'win32' && app.isPackaged) {
+      try {
+        const child = spawn('explorer.exe', [], { detached: true, stdio: 'ignore' })
+        child.unref()
+      } catch (err) {
+        console.warn('[disable] failed to start explorer.exe:', err)
+      }
+    }
+    this.allowQuit = true
+    this.destroyLockWindows()
+    this.closeAdminWindow()
+    this.teardownSession()
+    this.finalizeParkedVisit('admin')
+    app.quit()
+  }
+
+  /**
+   * Clear master disable and restore kiosk autostart + watchdog. Stays in the
+   * current admin UI; next lockscreen entry runs full kiosk again.
+   * Aborts (throws) if the flag cannot be cleared.
+   */
+  enableAppAndResumeKiosk(): void {
+    bootLog('enableAppAndResumeKiosk — clear disabled.flag + register startup + watchdog')
+    setAppFullyDisabled(false)
+    if (isAppFullyDisabled()) {
+      throw new Error('disabled.flag still present after clear; aborting enable')
+    }
+    registerStartup()
+    ensureWatchdogProtection()
+    // Disabled boot skips initKeyboardHook; restore it for the next lockscreen.
+    initKeyboardHook()
+    this.broadcastState()
   }
 
   // ---- Broadcast ----

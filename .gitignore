@@ -11,3 +11,11 @@ release/
 *.sqlite-shm
 .DS_Store
 Thumbs.db
+
+# Portable Node + WinSW fetched by scripts/fetch-watchdog-runtime.js
+watchdog/runtime/*
+!watchdog/runtime/.gitkeep
+!watchdog/runtime/README.md
+
+# Local portable tooling (MinGit / gh downloads)
+.tools/

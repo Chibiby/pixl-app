@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs'
 import type { Account, AccountPublic, LoginResult, SessionMode } from '@shared/types'
 import { NO_CREDITS_MESSAGE } from '@shared/money'
 import { getRuntimeConfig } from './config'
+import { isAppFullyDisabled } from './disable'
 import { getMachineIdCached } from './sync/identity'
 import {
   getAccountByUsername,
@@ -47,6 +48,12 @@ export async function attemptLogin(
     password === DEV_BYPASS_PASSWORD
   ) {
     return { result: devBypassResult(), serverSessionId: null }
+  }
+
+  // Master disable: local admin auth only — never call login_account (would
+  // open a server play session / mark the account in-use for clients).
+  if (isAppFullyDisabled()) {
+    return loginWhileDisabled(username, password)
   }
 
   if (getSupabase() && cfg.hasSupabase) {
@@ -140,6 +147,32 @@ function offlineLogin(
   // NOTE: offline we cannot verify single-session-per-account against the
   // server. The server reconciles this on reconnect.
   return gate(username, mode, purchaseCentavos)
+}
+
+/**
+ * Auth while Pixl is master-disabled: verify against local bcrypt only.
+ * Admins may enter the panel to re-enable; clients get a local error and
+ * never hit login_account (no server session / in_session PC status).
+ */
+function loginWhileDisabled(username: string, password: string): LoginAttempt {
+  const acc = getAccountByUsername(username)
+  if (!acc || !safeCompare(password, acc.password_hash)) {
+    return { result: rejection('invalid_credentials'), serverSessionId: null }
+  }
+  if (acc.role === 'admin') {
+    return {
+      result: { outcome: 'admin_ok', message: '', account: toPublic(acc) },
+      serverSessionId: null
+    }
+  }
+  return {
+    result: {
+      outcome: 'error',
+      message: 'Pixl is disabled on this PC. An admin must open Pixl and re-enable it.',
+      account: null
+    },
+    serverSessionId: null
+  }
 }
 
 /**

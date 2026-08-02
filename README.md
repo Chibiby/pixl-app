@@ -31,7 +31,7 @@ copy .env.example .env # then fill in SUPABASE_URL and SUPABASE_ANON_KEY
 npm run dev            # launch in development (hot reload). Auto-shutdown is disabled in dev.
 npm run build          # typecheck + build main/preload/renderer into out/
 npm run start          # preview the production build locally
-npm run package:win    # build a Windows NSIS installer into release/
+npm run package:win    # build all-in-one NSIS installer → release/pixl-setup-x.y.z.exe
 ```
 
 Dev mode sets `PIXL_NO_SHUTDOWN=1` automatically so the idle timer never powers
@@ -58,17 +58,24 @@ also use **Check for updates** / **Update now** in the Admin Panel sidebar
 git tag v0.1.0
 git push origin v0.1.0
 
-# 3. Build the Windows installer (+ latest.yml for electron-updater)
+# 3. Build the Windows installer (+ latest.yml for electron-updater).
+#    Fetches portable Node/WinSW into watchdog/runtime/, then packs NSIS.
 npm run package:win
 
 # 4. Publish a GitHub Release for that tag and upload release\ artifacts:
-#    - Pixl Setup x.y.z.exe (NSIS installer)
+#    - pixl-setup-x.y.z.exe (all-in-one cafe installer)
 #    - latest.yml (and .blockmap if present)
 gh release create v0.1.0 --title "v0.1.0" --generate-notes `
-  "release/Pixl Setup 0.1.0.exe" `
+  "release/pixl-setup-0.1.0.exe" `
   "release/latest.yml"
 # Include *.blockmap if electron-builder emitted them.
 ```
+
+`build.nsis.artifactName` is `pixl-setup-${version}.${ext}` so the installer is a single clear
+file under `release/`. `package:win` also copies it to `release/pixl.exe` (same all-in-one
+binary). `latest.yml` references the versioned filename — upload that exe + `latest.yml`
+(not only the `pixl.exe` alias) so `electron-updater` on cafe PCs continues to work.
+
 
 Alternatively, with a GitHub token that can publish releases:
 
@@ -93,10 +100,13 @@ update, then freeze again when stable.
 If Supabase is not configured, the app runs **fully offline** against the local
 SQLite cache (unlimited offline grace, per the plan).
 
-**Packaged installs:** copy `.env` to `%ProgramData%\Pixl\.env` (survives NSIS
-updates). The app also checks `resources\.env` and migrates it to ProgramData
-on first launch. Do not rely on a `.env` only inside `Program Files\Pixl` —
-updates replace that folder.
+**Packaged installs:** the NSIS installer creates `%ProgramData%\Pixl` and seeds
+`.env.example` there if missing (never overwrites an existing `.env`). Copy or
+rename to `%ProgramData%\Pixl\.env` and fill values — that path survives NSIS
+updates. See `%ProgramData%\Pixl\OPERATOR.txt` (also under `resources\`) for the
+cafe post-install checklist. The app also checks `resources\.env` and migrates
+it to ProgramData on first launch. Do not rely on a `.env` only inside
+`Program Files\Pixl` — updates replace that folder.
 
 ## Balance model
 
@@ -184,55 +194,86 @@ without a kernel driver. This is the cafe-grade approach.
 Create a dedicated **Standard** user (not Administrator) for the cafe seats, e.g.
 `cafeuser`. The kiosk runs as that user; admins keep a separate admin account.
 
-## 2. Install the watchdog service (relaunches the app if killed)
+## 2. All-in-one cafe installer (app + watchdog)
 
-Production path on a cafe build machine (needs a checkout with npm deps — the
-installed app ships `resources\watchdog\watchdog-runner.js`, but `node-windows`
-install still runs from the repo):
+Cafe PCs only need the elevated NSIS installer — **no** separate
+`npm run watchdog:install` (or manual `install.cmd`) step.
 
 ```powershell
+# Build machine (once per release):
 npm run package:win
-# Install the NSIS installer from release\ (e.g. Pixl Setup x.y.z.exe)
-# Then, from an elevated PowerShell in the repo:
-$env:PIXL_EXE = 'C:\Program Files\Pixl\Pixl.exe'
-npm run watchdog:install
+
+# Each cafe PC — UAC / admin elevation:
+#   run release\pixl-setup-x.y.z.exe
 ```
 
-`watchdog:install` resolves paths as follows:
+After copying app files, the installer (elevated):
 
-- **Exe:** `PIXL_EXE` if set, else `C:\Program Files\Pixl\Pixl.exe` if present
-- **Script source:** `PIXL_WATCHDOG_SCRIPT` if set, else the packaged
-  `C:\Program Files\Pixl\resources\watchdog\watchdog-runner.js` if present,
-  else the repo-relative `watchdog\watchdog-runner.js`
-- **Installed copy:** the runner + WinSW daemon live under
+1. Seeds `%ProgramData%\Pixl\.env.example` if missing (never overwrites `.env`)
+2. Copies `OPERATOR.txt` into `%ProgramData%\Pixl\`
+3. Runs `resources\watchdog\install.cmd` → registers **PixlWatchdog**
+   (`pixlwatchdog.exe`, Automatic) via WinSW + portable Node under
+   `%ProgramData%\Pixl\watchdog\`
+
+Exit code is logged to `%ProgramData%\Pixl\watchdog-install.log`. Uninstall
+removes the service (skipped during `electron-updater` in-place updates).
+
+The packaged app ships a **self-contained** watchdog payload under
+`resources\watchdog\` (runner + WinSW + portable `node.exe`). Cafe PCs do **not**
+need a git checkout or `npm install`.
+
+Manual repair / build-machine helpers (same scripts the NSIS hook calls):
+
+```powershell
+# Elevated on cafe PC — no repo / npm:
+& 'C:\Program Files\Pixl\resources\watchdog\install.cmd'
+& 'C:\Program Files\Pixl\resources\watchdog\uninstall.cmd'
+
+# Build machine (after watchdog:fetch-runtime if not packaged yet):
+$env:PIXL_EXE = 'C:\Program Files\Pixl\Pixl.exe'
+npm run watchdog:install
+npm run watchdog:uninstall
+```
+
+How watchdog install resolves paths:
+
+- **Exe:** first `install.cmd` arg, else `PIXL_EXE`, else
+  `C:\Program Files\Pixl\Pixl.exe` if present
+- **Source dir:** packaged `resources\watchdog` if present, else repo `watchdog\`
+  (`runtime\node.exe` + `runtime\winsw.exe` from `package:win` /
+  `watchdog:fetch-runtime`)
+- **Installed copy:** runner, portable Node, and WinSW under
   `%ProgramData%\Pixl\watchdog\` so an NSIS reinstall of Pixl does not break
-  the service. The Windows service name is `pixlwatchdog.exe` (display name
-  `PixlWatchdog`), start type Automatic.
-
-Keep this repo (or at least `node_modules\node-windows`) on the machine — the
-service wrapper still loads from there. Remove with `npm run watchdog:uninstall`.
+  the service
+- **Service name:** `pixlwatchdog.exe` (display name `PixlWatchdog`), Automatic
 
 ## 3. Pixl before desktop (recommended shell replacement)
 
 Login-item startup cannot beat Explorer. For cafe seats, make **Pixl the
 per-user Windows shell** so Winlogon starts `Pixl.exe` instead of the desktop.
 
-1. Install Pixl and the watchdog (steps above).
+1. Install with `pixl-setup-x.y.z.exe` (step 2 — includes the watchdog).
 2. Log in as the cafe Standard user (or load that user’s `NTUSER.DAT` offline —
    see the script header).
 3. Run:
 
 ```powershell
-# From the repo, as the cafe user (HKCU — elevation not required):
-.\scripts\set-cafe-shell.ps1
+# Packaged install — run while logged in as the cafe Standard user
+# (HKCU — elevation not required). Do not run this as an admin account.
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\Pixl\resources\set-cafe-shell.ps1"
 
 # Restore normal desktop later:
-.\scripts\set-cafe-shell.ps1 -Restore
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\Pixl\resources\set-cafe-shell.ps1" -Restore
+
+# From a repo checkout (same script):
+.\scripts\set-cafe-shell.ps1
 ```
 
-Default path is `C:\Program Files\Pixl\Pixl.exe` (`-PixlPath` to override).
-Packaged Pixl also writes this Shell value for the current user on startup as a
-safety net; the script is the operator-facing setup path.
+Default exe is the packaged `Pixl.exe` beside `resources\` when present, else
+`C:\Program Files\Pixl\Pixl.exe` (`-PixlPath` to override). The installer does
+**not** set the shell automatically (unsafe on admin machines). Packaged Pixl
+also writes this Shell value for the current user on startup as a safety net;
+the script is the operator-facing first-time setup path.
 
 Keep a separate **Windows admin** account with a normal Explorer shell for
 machine maintenance. Cafe user → Pixl shell; admin account → desktop.
@@ -280,10 +321,13 @@ otherwise the registry keys below (log in as that user or load their hive).
   time. Ledger rows carry a per-PC monotonic sequence number so clock tampering
   cannot reorder or erase debits.
 
-## 7. Admin maintenance quit
+## 7. Admin maintenance quit vs master disable
 
-Open the Admin Panel (admin credentials — not a play session). The panel has a
-**Quit (maintenance)** button that sets `allowQuit`, writes
+Open the Admin Panel (admin credentials — not a play session).
+
+### Quit (maintenance) — temporary
+
+The sidebar **Quit (maintenance)** button sets `allowQuit`, writes
 `%PUBLIC%\Pixl\maintenance.stop` (tied to the current boot), best-effort
 `sc stop PixlWatchdog`, launches **Explorer** so the machine stays usable for
 maintenance on that cafe session, and exits.
@@ -298,12 +342,26 @@ A reboot or the next cafe-user login returns to the **Pixl shell** (Explorer was
 only started for that maintenance session; the Winlogon `Shell` value is
 unchanged).
 
+### Disable Pixl on this PC — persistent
+
+Settings → **Master control** → **Disable Pixl on this PC** writes
+`%PUBLIC%\Pixl\disabled.flag` (ISO timestamp; **not** boot-scoped), restores
+Winlogon `Shell` to `explorer.exe`, clears the login-item autostart, pauses
+watchdog relaunch (same session also writes maintenance.stop), launches
+Explorer, and quits.
+
+Unlike maintenance quit, this **survives restarts**. The PC behaves like Pixl
+was only installed (no shell/login autostart, watchdog will not relaunch). To
+turn it back on, open Pixl manually, sign in as admin, and use **Enable Pixl on
+this PC** (clears the flag, re-registers startup, resumes watchdog). Client
+logins are blocked while disabled; admins can still sign in to re-enable.
+
 ## 8. Deep Freeze / similar disk protection
 
-If you use Deep Freeze (or similar), **freeze only after** Pixl is installed, the
-watchdog service is installed, and the cafe user’s shell is set
-(`scripts\set-cafe-shell.ps1`). Thaw to change shell, watchdog, or app updates;
-freeze again when configuration is stable.
+If you use Deep Freeze (or similar), **freeze only after** `pixl-setup-x.y.z.exe`
+has installed Pixl + the watchdog, `.env` is filled, and the cafe user’s shell is
+set (`set-cafe-shell.ps1`). Thaw for shell/watchdog/app updates; freeze again
+when configuration is stable.
 
 ## First admin account
 

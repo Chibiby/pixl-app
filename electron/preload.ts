@@ -65,6 +65,10 @@ const api: PixlApi = {
     ipcRenderer.invoke(IPC.adminListLedger, filter) as Promise<AdminLedgerPage>,
   adminGetStats: () => ipcRenderer.invoke(IPC.adminGetStats) as Promise<AdminStats>,
   adminQuitApp: () => ipcRenderer.invoke(IPC.adminQuitApp) as Promise<void>,
+  adminGetAppEnabled: () =>
+    ipcRenderer.invoke(IPC.adminGetAppEnabled) as Promise<boolean>,
+  adminSetAppEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke(IPC.adminSetAppEnabled, enabled) as Promise<boolean>,
 
   getSyncStatus: () => ipcRenderer.invoke(IPC.getSyncStatus) as Promise<SyncStatus>,
   forceSync: () => ipcRenderer.invoke(IPC.forceSync) as Promise<SyncStatus>,

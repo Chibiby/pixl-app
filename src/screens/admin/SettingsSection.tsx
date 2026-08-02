@@ -11,6 +11,9 @@ export function SettingsSection({ onChanged }: { onChanged: () => void }): JSX.E
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<Note | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [appEnabled, setAppEnabled] = useState<boolean | null>(null)
+  const [masterBusy, setMasterBusy] = useState(false)
+  const [masterNote, setMasterNote] = useState<Note | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -22,6 +25,14 @@ export function SettingsSection({ onChanged }: { onChanged: () => void }): JSX.E
       })
       .catch((e: unknown) => {
         if (alive) setError(errText(e, 'Could not load settings'))
+      })
+    void window.pixl
+      .adminGetAppEnabled()
+      .then((enabled) => {
+        if (alive) setAppEnabled(enabled)
+      })
+      .catch(() => {
+        if (alive) setAppEnabled(true)
       })
     return () => {
       alive = false
@@ -62,11 +73,93 @@ export function SettingsSection({ onChanged }: { onChanged: () => void }): JSX.E
     }
   }
 
+  async function disableOnThisPc(): Promise<void> {
+    if (masterBusy) return
+    const ok = confirm(
+      'Disable Pixl on this PC?\n\n' +
+        '• Removes Winlogon Shell and login-item autostart\n' +
+        '• Watchdog will not relaunch the app\n' +
+        '• Survives PC restarts (unlike Quit for maintenance)\n' +
+        '• This PC returns to a normal desktop\n\n' +
+        'To turn Pixl back on, open the app manually and use Enable Pixl on this PC.'
+    )
+    if (!ok) return
+    setMasterBusy(true)
+    setMasterNote(null)
+    try {
+      await window.pixl.adminSetAppEnabled(false)
+      // App quits after disable; keep UI honest if quit is slow.
+      setAppEnabled(false)
+    } catch (e) {
+      setMasterNote({ tone: 'err', text: errText(e, 'Could not disable Pixl') })
+      setMasterBusy(false)
+    }
+  }
+
+  async function enableOnThisPc(): Promise<void> {
+    if (masterBusy) return
+    setMasterBusy(true)
+    setMasterNote(null)
+    try {
+      const enabled = await window.pixl.adminSetAppEnabled(true)
+      setAppEnabled(enabled)
+      setMasterNote({
+        tone: 'ok',
+        text: 'Pixl enabled — autostart and watchdog protection restored'
+      })
+      onChanged()
+    } catch (e) {
+      setMasterNote({ tone: 'err', text: errText(e, 'Could not enable Pixl') })
+    } finally {
+      setMasterBusy(false)
+    }
+  }
+
   if (error) return <p className="lock-error">{error}</p>
   if (!settings) return <p className="adm-loading">Loading settings…</p>
 
   return (
     <div className="adm-stack adm-settings">
+      <Panel
+        title="Master control"
+        meta={appEnabled === false ? 'disabled on this PC' : 'enabled'}
+      >
+        <div className="adm-setting">
+          <p className="adm-setting-copy">
+            Status:{' '}
+            <strong>
+              {appEnabled === null ? '…' : appEnabled ? 'Enabled' : 'Disabled'}
+            </strong>
+            . Disable removes autostart and stops the watchdog from relaunching
+            Pixl — including after a reboot. Unlike Quit (maintenance), this is
+            not cleared by restart. Re-enable only by opening Pixl manually and
+            turning it back on below.
+          </p>
+          <div className="adm-save-row">
+            {appEnabled === false ? (
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={masterBusy}
+                onClick={() => void enableOnThisPc()}
+              >
+                {masterBusy ? <span className="spinner" /> : 'Enable Pixl on this PC'}
+              </button>
+            ) : (
+              <button
+                className="btn btn-danger"
+                type="button"
+                disabled={masterBusy || appEnabled === null}
+                onClick={() => void disableOnThisPc()}
+              >
+                {masterBusy ? <span className="spinner" /> : 'Disable Pixl on this PC'}
+              </button>
+            )}
+            <NoteLine note={masterNote} />
+          </div>
+        </div>
+      </Panel>
+
       <Panel title="Pricing" meta="applies to every purchase from now on">
         <div className="adm-setting">
           <div className="field">

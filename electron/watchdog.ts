@@ -3,11 +3,13 @@ import { execFileSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { isAppFullyDisabled } from './disable'
 
 // Watchdog service control + maintenance pause. The service itself lives in
-// ../watchdog/watchdog-runner.js and is installed via scripts/watchdog-install.js.
+// ../watchdog/watchdog-runner.js and is installed via watchdog/install-service.js
+// (WinSW + portable Node under %ProgramData%\Pixl\watchdog).
 
-// node-windows registers the service id as lowercase + .exe (display name is PixlWatchdog).
+// WinSW <id> / service name (legacy node-windows used the same id; display name PixlWatchdog).
 export const WATCHDOG_SERVICE_NAME = 'pixlwatchdog.exe'
 
 export function getExecutablePath(): string {
@@ -27,6 +29,15 @@ export function getBootStamp(): string {
   return String(Math.floor((Date.now() - os.uptime() * 1000) / 1000))
 }
 
+export function stopWatchdogService(): void {
+  try {
+    execFileSync('sc', ['stop', WATCHDOG_SERVICE_NAME], { windowsHide: true })
+    console.log(`[watchdog] sc stop ${WATCHDOG_SERVICE_NAME} ok`)
+  } catch {
+    // May fail without elevation; flag is the reliable path.
+  }
+}
+
 export function enterMaintenanceMode(): void {
   const flagPath = getMaintenanceFlagPath()
   const dir = path.dirname(flagPath)
@@ -38,15 +49,15 @@ export function enterMaintenanceMode(): void {
   } catch (err) {
     console.warn('[watchdog] failed to write maintenance flag:', err)
   }
-  try {
-    execFileSync('sc', ['stop', WATCHDOG_SERVICE_NAME], { windowsHide: true })
-    console.log(`[watchdog] sc stop ${WATCHDOG_SERVICE_NAME} ok`)
-  } catch {
-    // May fail without elevation; flag is the reliable path.
-  }
+  stopWatchdogService()
 }
 
 export function ensureWatchdogProtection(): void {
+  // Master disable must survive this call — never clear disabled.flag here.
+  if (isAppFullyDisabled()) {
+    console.log('[watchdog] app fully disabled; not starting protection')
+    return
+  }
   const flagPath = getMaintenanceFlagPath()
   try {
     if (fs.existsSync(flagPath)) {
@@ -65,12 +76,16 @@ export function ensureWatchdogProtection(): void {
 }
 
 export function watchdogInstallHint(): string {
+  const packagedHint =
+    `"C:\\Program Files\\Pixl\\resources\\watchdog\\install.cmd"`
   return (
-    `Register the watchdog from an elevated shell:\n` +
-    `  set PIXL_EXE=${getExecutablePath()}\n` +
-    `  npm run watchdog:install\n` +
+    `Register the watchdog from an elevated shell (no repo / npm needed):\n` +
+    `  ${packagedHint}\n` +
+    `Or from a build machine: set PIXL_EXE=${getExecutablePath()} then ` +
+    `npm run watchdog:install\n` +
     `Admin Quit (maintenance) writes %PUBLIC%\\Pixl\\maintenance.stop so the ` +
-    `watchdog skips relaunch until Pixl starts again or the PC restarts.`
+    `watchdog skips relaunch until Pixl starts again or the PC restarts. ` +
+    `Master disable writes %PUBLIC%\\Pixl\\disabled.flag (survives reboot).`
   )
 }
 

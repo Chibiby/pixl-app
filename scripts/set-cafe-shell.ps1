@@ -22,14 +22,19 @@
   Set Shell back to explorer.exe (normal Windows desktop).
 
 .PARAMETER PixlPath
-  Full path to Pixl.exe when setting the shell. Default: C:\Program Files\Pixl\Pixl.exe
+  Full path to Pixl.exe when setting the shell. Default: packaged install path, or Pixl.exe
+  next to this script's parent folder when run from Program Files\Pixl\resources\.
 
 .PARAMETER HiveRoot
   Registry path for a loaded user hive (e.g. Registry::HKEY_USERS\CafeTemp). When omitted,
   the current user's HKCU is used.
 
 .EXAMPLE
-  # As cafeuser, after installing Pixl:
+  # As cafeuser, after installing Pixl (packaged copy):
+  & 'C:\Program Files\Pixl\resources\set-cafe-shell.ps1'
+
+.EXAMPLE
+  # From a repo checkout:
   .\scripts\set-cafe-shell.ps1
 
 .EXAMPLE
@@ -42,13 +47,31 @@
 param(
   [switch]$Restore,
 
-  [string]$PixlPath = 'C:\Program Files\Pixl\Pixl.exe',
+  [string]$PixlPath,
 
   [string]$HiveRoot
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+function Get-DefaultPixlPath {
+  $candidates = @(
+    (Join-Path (Split-Path -Parent $PSScriptRoot) 'Pixl.exe'),
+    (Join-Path $PSScriptRoot 'Pixl.exe'),
+    'C:\Program Files\Pixl\Pixl.exe'
+  )
+  foreach ($candidate in $candidates) {
+    if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+      return (Resolve-Path -LiteralPath $candidate).Path
+    }
+  }
+  return 'C:\Program Files\Pixl\Pixl.exe'
+}
+
+if (-not $PixlPath) {
+  $PixlPath = Get-DefaultPixlPath
+}
 
 $winlogonRelative = 'Software\Microsoft\Windows NT\CurrentVersion\Winlogon'
 $shellValueName = 'Shell'

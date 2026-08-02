@@ -1,6 +1,16 @@
 import { app, BrowserWindow } from 'electron'
-import { execFile, execFileSync } from 'child_process'
+import { execFileSync, spawn } from 'child_process'
 import { bootLog } from './bootLog'
+import { isAppFullyDisabled } from './disable'
+
+/** Pending deferred explorer kills from suppressDesktopShellDeferred. */
+let suppressDesktopShellTimers: ReturnType<typeof setTimeout>[] = []
+/**
+ * Bumped by cancelSuppressDesktopShell so a deferred callback that already
+ * left the event queue cannot still taskkill Explorer after a session/admin
+ * restore. Paired with sync taskkill below.
+ */
+let suppressDesktopShellEpoch = 0
 
 const WINLOGON_KEY =
   'HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon'
@@ -39,28 +49,65 @@ export function suppressDesktopShell(): void {
   if (process.platform !== 'win32' || !app.isPackaged) return
   if (!isPixlWinlogonShell()) return
   bootLog('suppressDesktopShell: taskkill explorer.exe')
+  // Sync on purpose: async taskkill can finish after cancel+ensureDesktopShell
+  // and re-kill the Explorer we just restored (no taskbar in session).
   try {
-    execFile(
-      'taskkill',
-      ['/F', '/IM', 'explorer.exe'],
-      { windowsHide: true },
-      (err) => {
-        if (err) bootLog('suppressDesktopShell: taskkill done (explorer may be absent)')
-        else bootLog('suppressDesktopShell: explorer killed')
-      }
-    )
+    execFileSync('taskkill', ['/F', '/IM', 'explorer.exe'], {
+      windowsHide: true,
+      stdio: 'ignore'
+    })
+    bootLog('suppressDesktopShell: explorer killed')
   } catch {
-    // best-effort
+    bootLog('suppressDesktopShell: taskkill done (explorer may be absent)')
   }
 }
 
-/** Defer explorer kill so the first lock paint is not racing DWM teardown. */
+/**
+ * Cancel pending deferred explorer kills. Call before starting a client
+ * session or admin so a late timer cannot kill Explorer after restore.
+ */
+export function cancelSuppressDesktopShell(): void {
+  suppressDesktopShellEpoch += 1
+  for (const t of suppressDesktopShellTimers) clearTimeout(t)
+  suppressDesktopShellTimers = []
+}
+
+/**
+ * Defer explorer kill so the first lock paint is not racing DWM teardown.
+ * Cancels any prior deferred kills first (safe on re-enter lockscreen).
+ */
 export function suppressDesktopShellDeferred(delayMs = 2500): void {
   if (process.platform !== 'win32' || !app.isPackaged) return
   if (!isPixlWinlogonShell()) return
-  setTimeout(() => suppressDesktopShell(), delayMs)
+  cancelSuppressDesktopShell()
+  const epoch = suppressDesktopShellEpoch
+  const run = (): void => {
+    if (epoch !== suppressDesktopShellEpoch) return
+    suppressDesktopShell()
+  }
+  suppressDesktopShellTimers.push(setTimeout(run, delayMs))
   // Windows sometimes auto-restarts explorer; sweep again shortly after.
-  setTimeout(() => suppressDesktopShell(), delayMs + 4000)
+  suppressDesktopShellTimers.push(setTimeout(run, delayMs + 4000))
+}
+
+/**
+ * Restore Explorer/taskbar after lockscreen suppress. Winlogon-shell kiosks
+ * kill explorer.exe on lock; session/admin need it back for Alt+Tab, desktop,
+ * and the taskbar. Best-effort spawn (detached/unref) matching Admin Quit —
+ * Windows typically ignores a duplicate shell if Explorer is already running.
+ * Never runs unpackaged/dev; only when Pixl is the Winlogon shell.
+ */
+export function ensureDesktopShell(): void {
+  if (process.platform !== 'win32' || !app.isPackaged) return
+  if (!isPixlWinlogonShell()) return
+  bootLog('ensureDesktopShell: spawn explorer.exe')
+  try {
+    const child = spawn('explorer.exe', [], { detached: true, stdio: 'ignore' })
+    child.unref()
+  } catch (err) {
+    console.warn('[startup] failed to start explorer.exe:', err)
+    bootLog(`ensureDesktopShell FAILED: ${String(err)}`)
+  }
 }
 
 /**
@@ -102,6 +149,10 @@ export function forceShellForeground(win?: BrowserWindow | null): void {
 export function registerStartup(): void {
   if (process.platform !== 'win32') return
   if (!app.isPackaged) return // don't register the dev/electron binary
+  if (isAppFullyDisabled()) {
+    bootLog('registerStartup skipped — app fully disabled')
+    return
+  }
 
   let shellOk = false
   try {
@@ -141,5 +192,47 @@ export function registerStartup(): void {
     )
   } catch (err) {
     console.warn('[startup] failed to register login item:', err)
+  }
+}
+
+/**
+ * Undo Winlogon Shell + login-item autostart so the PC boots to Explorer.
+ * Used by the persistent master-disable path (survives restarts).
+ */
+export function unregisterStartup(): void {
+  if (process.platform !== 'win32') return
+
+  if (app.isPackaged) {
+    try {
+      execFileSync(
+        'reg',
+        [
+          'add',
+          WINLOGON_KEY,
+          '/v',
+          'Shell',
+          '/t',
+          'REG_SZ',
+          '/d',
+          'explorer.exe',
+          '/f'
+        ],
+        { windowsHide: true }
+      )
+      bootLog('Winlogon Shell restored to explorer.exe')
+    } catch (err) {
+      console.warn('[startup] failed to restore Winlogon Shell:', err)
+      bootLog(`Winlogon Shell restore FAILED: ${String(err)}`)
+    }
+  }
+
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: false,
+      path: process.execPath
+    })
+    bootLog('login item disabled (master disable)')
+  } catch (err) {
+    console.warn('[startup] failed to clear login item:', err)
   }
 }
